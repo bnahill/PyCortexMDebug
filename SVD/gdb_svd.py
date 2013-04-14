@@ -36,16 +36,16 @@ class LoadSVD(gdb.Command):
 	def invoke(self, args, from_tty):
 		try:
 			f = str(args).split(" ")[0]
-			print("Loading SVD file {}...".format(f))
+			gdb.write("Loading SVD file {}...\n".format(f))
 		except:
-			print("Please provide a filename (svd_load [filename])")
+			gdb.write("Please provide a filename (svd_load [filename])\n")
 			return
 		try:
 			svd_file = SVDFile(f)
 			SVD(svd_file)
-			print("Done!")
+			gdb.write("Done!\n")
 		except:
-			print("Error loading file {}".format(f))
+			gdb.write("Error loading file {}\n".format(f))
 
 if __name__ == "__main__":
 	# This will also get executed by GDB
@@ -68,7 +68,7 @@ class SVD(gdb.Command):
 		form = ""
 		if s[0] and s[0][0] == '/':
 			if len(s[0]) == 1:
-				print("Incorrect format")
+				gdb.write("Incorrect format\n")
 				return
 			else:
 				form = s[0][1:]
@@ -77,39 +77,51 @@ class SVD(gdb.Command):
 				s = s[1:]
 		
 		if s[0].lower() == 'help':
-			print("Usage:")
-			print("=========")
-			print("svd:")
-			print("\tList available peripherals")
-			print("svd [peripheral_name]:")
-			print("\tDisplay all registers pertaining to that peripheral")
-			print("svd [peripheral_name] [register_name]:")
-			print("\tDisplay the fields in that register")
-			print("svd/[format_character] ...")
-			print("\tFormat values using that character")
-			print("\td(default):decimal, x: hex, b: binary")
+			gdb.write("Usage:\n")
+			gdb.write("=========\n")
+			gdb.write("svd:\n")
+			gdb.write("\tList available peripherals\n")
+			gdb.write("svd [peripheral_name]:\n")
+			gdb.write("\tDisplay all registers pertaining to that peripheral\n")
+			gdb.write("svd [peripheral_name] [register_name]:\n")
+			gdb.write("\tDisplay the fields in that register\n")
+			gdb.write("svd/[format_character] ...\n")
+			gdb.write("\tFormat values using that character\n")
+			gdb.write("\td(default):decimal, x: hex, o: octal, b: binary\n")
 			return
 
 		if not len(s[0]):
-			print("Available Peripherals:")
+			gdb.write("Available Peripherals:\n")
 			for p in self.svd_file.peripherals.itervalues():
 				desc = re.sub(r'\s+', ' ', p.description)
-				print("\t{}: {}".format(p.name, desc))
+				gdb.write("\t{}: {}\n".format(p.name, desc))
 			return
 
 		if len(s) == 1:
-			print("Registers in %s:" % s[0])
-			regs = self.svd_file.peripherals[s[0]].registers
+			try:
+				regs = self.svd_file.peripherals[s[0]].registers
+			except KeyError:
+				gdb.write("Peripheral {} does not exist!\n".format(s[0]))
+				return
+			gdb.write("Registers in %s:\n" % s[0])
 			for r in regs.itervalues():
 				data = self.read(r.address(), r.size)
 				data = self.format(data, form, r.size)
+				if form == 'a':
+					data += " <" + re.sub(r'\s+', ' ',
+						gdb.execute("info symbol {}".format(data), True,
+						True).strip()) + ">"
 				desc = re.sub(r'\s+', ' ', r.description)
-				print("\t{}: {}\n\t\t{}".format(r.name, data, desc))
+				gdb.write("\t{}: {}\n\t\t{}\n".format(r.name, data, desc))
 			return
 			
 		if len(s) == 2:
-			print("Fields in {} of peripheral {}:".format(s[1], s[0]))
-			reg = self.svd_file.peripherals[s[0]].registers[s[1]]
+			try:
+				reg = self.svd_file.peripherals[s[0]].registers[s[1]]
+			except KeyError:
+				gdb.write("Register {} in peripheral {} does not exist!\n".format(s[1], s[0]))
+				return
+			gdb.write("Fields in {} of peripheral {}:\n".format(s[1], s[0]))
 			fields = reg.fields
 			data = self.read(reg.address(), reg.size)
 			for f in fields.itervalues():
@@ -117,10 +129,10 @@ class SVD(gdb.Command):
 				val &= (1 << f.width) - 1
 				val = self.format(val, form, f.width)
 				desc = re.sub(r'\s+', ' ', f.description)
-				print("\t{}: {}\n\t\t{}".format(f.name, val, desc))
+				gdb.write("\t{}: {}\n\t\t{}\n".format(f.name, val, desc))
 			return
 		
-		print("Unknown input")
+		gdb.write("Unknown input\n")
 	
 	def complete(self, text, word):
 		""" Perform tab-completion for the command
@@ -150,15 +162,19 @@ class SVD(gdb.Command):
 		""" Read from memory (using print) and return an integer
 		"""
 		t = "uint{:d}_t".format(bits)
-		cmd = "print *(%s *)%s" % (t, address)
+		cmd = "print *({} *){}".format(t, address)
 		return int(gdb.execute(cmd, True, True).split(" ")[-1])
 	
 	def format(self, value, form, length=32):
 		""" Format a number based on a format character and length
 		"""
-		if form == 'x':
+		if form == 'x' or form == 'a':
+			# For addresses, probably best in hex too
 			l = int(math.ceil(length/4.0))
 			return "0x"+"{:X}".format(value).zfill(l)
+		if form == 'o':
+			l = int(math.ceil(length/3.0))
+			return "0o"+"{:o}".format(value).zfill(l)
 		if form == 'b' or form == 't':
 			return "0b"+"{:b}".format(value).zfill(length)
 		# Default: Just return in decimal
@@ -171,7 +187,7 @@ class SVD(gdb.Command):
 		try:
 			return list(self.svd_file.peripherals[peripheral].registers.iterkeys())
 		except:
-			print("Peripheral %s doesn't exist" % peripheral)
+			gdb.write("Peripheral {} doesn't exist\n".format(peripheral))
 			return []
 	
 	def field_list(self, peripheral, register):
@@ -180,5 +196,6 @@ class SVD(gdb.Command):
 			reg = periph.registers[register]
 			return list(reg.fields.iterkeys())
 		except:
-			print("Register %s doesn't exist on %s" % (register, peripheral))
+			gdb.write("Register {} doesn't exist on {}\n".format(register, peripheral))
 			return []
+
