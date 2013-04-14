@@ -1,7 +1,7 @@
 PyCortexMDebug
 ==============
 
-A set of GDB/Python-based utilities to make life debugging ARM Cortex M processors a bit easier
+*A set of GDB/Python-based utilities to make life debugging ARM Cortex-M processors a bit easier*
 
 It will consist of several modules which will hopefully become integrated as they evolve. Presently, there is only one:
 
@@ -12,8 +12,11 @@ common description of peripherals, registers, and register fields. You
 can download SVD files for different manufacturers
 [here](http://www.arm.com/products/processors/cortex-m/cortex-microcontroller-software-interface-standard.php).
 
-My implementation so far has only tested STM32 chips but should hold for others.
-It consists of two components -- An lxml-based parser module (pysvd) and a GDB file (gdb_svd).
+My implementation so far has only tested STM32 chips but should hold for others. If others are like those from ST,
+expect plenty of errors in the file. Like GPIOA having a register named GPIOB_OSPEEDR and lots of 16-bit registers
+that are listed as 32!
+
+The implementation consists of two components -- An lxml-based parser module (pysvd) and a GDB file (gdb_svd).
 I haven't yet worked out a perfect workflow for this, though it's quite easy to use when
 you already tend to have a GDB initialization file for starting up OpenOCD and the like.
 However your workflow works, just make sure to, in GDB:
@@ -35,15 +38,14 @@ to see all of the registers (with their values) for a given peripheral. For more
 
 to see all of the field values with descriptions.
 
-You can add format modifiers like
+You can add format modifiers like:
 
-    svd/x [some_peripheral_name]
+* `svd/x` will display values in hex
+* `svd/o` will display values in octal
+* `svd/t` or `svd/b` will display values in binary
+* `svd/a` will display values in hex and try to resolve symbols from the values
 
-to see the values in hex or
-
-    svd/b (or /t) [some_peripheral_name]
-
-to see them in binary. All field values are displayed at the correct lengths as provided by the SVD files.
+All field values are displayed at the correct lengths as provided by the SVD files.
 Also, tab completion exists for nearly everything! When in doubt, run `svd help`.
 
 ### TODO
