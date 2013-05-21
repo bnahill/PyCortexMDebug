@@ -39,12 +39,20 @@ class SVDPeripheral:
 		except KeyError:
 			# This doesn't inherit registers from anything
 			registers = svd_elem.registers.getchildren()
-			self.description = svd_elem.description
+			self.description = str(svd_elem.description)
 			self.name = str(svd_elem.name)
 			self.registers = {}
 			for r in registers:
 				self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
 			return
+		try:
+			self.name = str(svd_elem.name)
+		except:
+			self.name = parent.peripherals[derived_from].name
+		try:
+			self.description = str(svd_elem.description)
+		except:
+			self.description = parent.peripherals[derived_from].description
 		self.registers = deepcopy(parent.peripherals[derived_from].registers)
 		self.refactor_parent(parent)
 
