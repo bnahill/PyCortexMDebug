@@ -92,9 +92,10 @@ class SVD(gdb.Command):
 
 		if not len(s[0]):
 			gdb.write("Available Peripherals:\n")
+			columnWidth = max(len(p.name) for p in self.svd_file.peripherals.itervalues()) + 2 # padding
 			for p in self.svd_file.peripherals.itervalues():
 				desc = re.sub(r'\s+', ' ', p.description)
-				gdb.write("\t{}: {}\n".format(p.name, desc))
+				gdb.write("\t{}:{}{}\n".format(p.name, "".ljust(columnWidth - len(p.name)) , desc))
 			return
 
 		if len(s) == 1:
