@@ -178,7 +178,7 @@ class SVD(gdb.Command):
 			return "0x"+"{:X}".format(value).zfill(l)
 		if form == 'o':
 			l = int(math.ceil(length/3.0))
-			return "0o"+"{:o}".format(value).zfill(l)
+			return "0"+"{:o}".format(value).zfill(l)
 		if form == 'b' or form == 't':
 			return "0b"+"{:b}".format(value).zfill(length)
 		# Default: Just return in decimal
