@@ -105,6 +105,7 @@ class SVD(gdb.Command):
 				gdb.write("Peripheral {} does not exist!\n".format(s[0]))
 				return
 			gdb.write("Registers in %s:\n" % s[0])
+			regList = []
 			for r in regs.itervalues():
 				data = self.read(r.address(), r.size)
 				data = self.format(data, form, r.size)
@@ -113,9 +114,15 @@ class SVD(gdb.Command):
 						gdb.execute("info symbol {}".format(data), True,
 						True).strip()) + ">"
 				desc = re.sub(r'\s+', ' ', r.description)
-				gdb.write("\t{}: {}\n".format(r.name, data))
-				if desc != r.name:
-					gdb.write("\t\t{}\n".format(desc))
+				regList.append((r.name, data, desc))
+
+			column1Width = max(len(reg[0]) for reg in regList) + 2 # padding
+			column2Width = max(len(reg[1]) for reg in regList)
+			for reg in regList:
+				gdb.write("\t{}:{}{}".format(reg[0], "".ljust(column1Width - len(reg[0])), reg[1].rjust(column2Width)))
+				if reg[2] != reg[0]:
+					gdb.write("  {}".format(reg[2]))
+				gdb.write("\n");
 			return
 			
 		if len(s) == 2:
@@ -127,14 +134,21 @@ class SVD(gdb.Command):
 			gdb.write("Fields in {} of peripheral {}:\n".format(s[1], s[0]))
 			fields = reg.fields
 			data = self.read(reg.address(), reg.size)
+			fieldList = []
 			for f in fields.itervalues():
 				val = data >> f.offset
 				val &= (1 << f.width) - 1
 				val = self.format(val, form, f.width)
 				desc = re.sub(r'\s+', ' ', f.description)
-				gdb.write("\t{}: {}\n".format(f.name, val))
-				if desc != f.name:
-					gdb.write("\t\t{}\n".format(desc))
+				fieldList.append((f.name, val, desc))
+
+			column1Width = max(len(field[0]) for field in fieldList) + 2 # padding
+			column2Width = max(len(field[1]) for field in fieldList) # padding
+			for field in fieldList:
+				gdb.write("\t{}:{}{}".format(field[0], "".ljust(column1Width - len(field[0])), field[1].rjust(column2Width)))
+				if field[2] != field[0]:
+					gdb.write("  {}".format(field[2]))
+				gdb.write("\n");
 			return
 		
 		gdb.write("Unknown input\n")
