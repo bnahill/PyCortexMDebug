@@ -163,7 +163,7 @@ class SVD(gdb.Command):
 		"""
 		t = "uint{:d}_t".format(bits)
 		cmd = "print *({} *){}".format(t, address)
-		return int(gdb.execute(cmd, True, True).split(" ")[-1])
+		return int(gdb.execute(cmd, True, True).split(" ")[-1], base = 0)
 	
 	def format(self, value, form, length=32):
 		""" Format a number based on a format character and length
