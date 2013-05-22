@@ -187,14 +187,26 @@ class SVD(gdb.Command):
 	def format(self, value, form, length=32):
 		""" Format a number based on a format character and length
 		"""
+		# get current gdb radix setting
+		radix = int(re.search("\d+", gdb.execute("show output-radix", True, True)).group(0))
+
+		# override it if asked to
 		if form == 'x' or form == 'a':
+			radix = 16
+		elif form == 'o':
+			radix = 8
+		elif form == 'b' or form == 't':
+			radix = 2
+
+		# format the output
+		if radix == 16:
 			# For addresses, probably best in hex too
 			l = int(math.ceil(length/4.0))
 			return "0x"+"{:X}".format(value).zfill(l)
-		if form == 'o':
+		if radix == 8:
 			l = int(math.ceil(length/3.0))
 			return "0"+"{:o}".format(value).zfill(l)
-		if form == 'b' or form == 't':
+		if radix == 2:
 			return "0b"+"{:b}".format(value).zfill(length)
 		# Default: Just return in decimal
 		return str(value)
