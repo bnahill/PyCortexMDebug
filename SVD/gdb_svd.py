@@ -112,7 +112,9 @@ class SVD(gdb.Command):
 						gdb.execute("info symbol {}".format(data), True,
 						True).strip()) + ">"
 				desc = re.sub(r'\s+', ' ', r.description)
-				gdb.write("\t{}: {}\n\t\t{}\n".format(r.name, data, desc))
+				gdb.write("\t{}: {}\n".format(r.name, data))
+				if desc != r.name:
+					gdb.write("\t\t{}\n".format(desc))
 			return
 			
 		if len(s) == 2:
@@ -129,7 +131,9 @@ class SVD(gdb.Command):
 				val &= (1 << f.width) - 1
 				val = self.format(val, form, f.width)
 				desc = re.sub(r'\s+', ' ', f.description)
-				gdb.write("\t{}: {}\n\t\t{}\n".format(f.name, val, desc))
+				gdb.write("\t{}: {}\n".format(f.name, val))
+				if desc != f.name:
+					gdb.write("\t\t{}\n".format(desc))
 			return
 		
 		gdb.write("Unknown input\n")
