@@ -19,13 +19,14 @@ along with PyCortexMDebug.  If not, see <http://www.gnu.org/licenses/>.
 import lxml.objectify as objectify
 import sys
 from copy import deepcopy
+from collections import OrderedDict
 
 class SVDFile:
 	def __init__(self, fname):
 		f = objectify.parse(fname)
 		root = f.getroot()
 		periph = root.peripherals.getchildren()
-		self.peripherals = {}
+		self.peripherals = OrderedDict()
 		# XML elements
 		for p in periph:
 			self.peripherals[str(p.name)] = SVDPeripheral(p, self)
@@ -41,7 +42,7 @@ class SVDPeripheral:
 			registers = svd_elem.registers.getchildren()
 			self.description = str(svd_elem.description)
 			self.name = str(svd_elem.name)
-			self.registers = {}
+			self.registers = OrderedDict()
 			for r in registers:
 				self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
 			return
@@ -72,7 +73,7 @@ class SVDPeripheralRegister:
 		self.offset = int(str(svd_elem.addressOffset),0)
 		self.size = int(str(svd_elem.size),0)
 		fields = svd_elem.fields.getchildren()
-		self.fields = {}
+		self.fields = OrderedDict()
 		for f in fields:
 			self.fields[str(f.name)] = SVDPeripheralRegisterField(f, self)
 	
