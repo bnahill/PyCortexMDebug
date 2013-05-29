@@ -92,9 +92,10 @@ class SVD(gdb.Command):
 
 		if not len(s[0]):
 			gdb.write("Available Peripherals:\n")
+			columnWidth = max(len(p.name) for p in self.svd_file.peripherals.itervalues()) + 2 # padding
 			for p in self.svd_file.peripherals.itervalues():
 				desc = re.sub(r'\s+', ' ', p.description)
-				gdb.write("\t{}: {}\n".format(p.name, desc))
+				gdb.write("\t{}:{}{}\n".format(p.name, "".ljust(columnWidth - len(p.name)) , desc))
 			return
 
 		if len(s) == 1:
@@ -104,6 +105,7 @@ class SVD(gdb.Command):
 				gdb.write("Peripheral {} does not exist!\n".format(s[0]))
 				return
 			gdb.write("Registers in %s:\n" % s[0])
+			regList = []
 			for r in regs.itervalues():
 				data = self.read(r.address(), r.size)
 				data = self.format(data, form, r.size)
@@ -112,7 +114,15 @@ class SVD(gdb.Command):
 						gdb.execute("info symbol {}".format(data), True,
 						True).strip()) + ">"
 				desc = re.sub(r'\s+', ' ', r.description)
-				gdb.write("\t{}: {}\n\t\t{}\n".format(r.name, data, desc))
+				regList.append((r.name, data, desc))
+
+			column1Width = max(len(reg[0]) for reg in regList) + 2 # padding
+			column2Width = max(len(reg[1]) for reg in regList)
+			for reg in regList:
+				gdb.write("\t{}:{}{}".format(reg[0], "".ljust(column1Width - len(reg[0])), reg[1].rjust(column2Width)))
+				if reg[2] != reg[0]:
+					gdb.write("  {}".format(reg[2]))
+				gdb.write("\n");
 			return
 			
 		if len(s) == 2:
@@ -124,12 +134,21 @@ class SVD(gdb.Command):
 			gdb.write("Fields in {} of peripheral {}:\n".format(s[1], s[0]))
 			fields = reg.fields
 			data = self.read(reg.address(), reg.size)
+			fieldList = []
 			for f in fields.itervalues():
 				val = data >> f.offset
 				val &= (1 << f.width) - 1
 				val = self.format(val, form, f.width)
 				desc = re.sub(r'\s+', ' ', f.description)
-				gdb.write("\t{}: {}\n\t\t{}\n".format(f.name, val, desc))
+				fieldList.append((f.name, val, desc))
+
+			column1Width = max(len(field[0]) for field in fieldList) + 2 # padding
+			column2Width = max(len(field[1]) for field in fieldList) # padding
+			for field in fieldList:
+				gdb.write("\t{}:{}{}".format(field[0], "".ljust(column1Width - len(field[0])), field[1].rjust(column2Width)))
+				if field[2] != field[0]:
+					gdb.write("  {}".format(field[2]))
+				gdb.write("\n");
 			return
 		
 		gdb.write("Unknown input\n")
@@ -163,19 +182,31 @@ class SVD(gdb.Command):
 		"""
 		t = "uint{:d}_t".format(bits)
 		cmd = "print *({} *){}".format(t, address)
-		return int(gdb.execute(cmd, True, True).split(" ")[-1])
+		return int(gdb.execute(cmd, True, True).split(" ")[-1], base = 0)
 	
 	def format(self, value, form, length=32):
 		""" Format a number based on a format character and length
 		"""
+		# get current gdb radix setting
+		radix = int(re.search("\d+", gdb.execute("show output-radix", True, True)).group(0))
+
+		# override it if asked to
 		if form == 'x' or form == 'a':
+			radix = 16
+		elif form == 'o':
+			radix = 8
+		elif form == 'b' or form == 't':
+			radix = 2
+
+		# format the output
+		if radix == 16:
 			# For addresses, probably best in hex too
 			l = int(math.ceil(length/4.0))
 			return "0x"+"{:X}".format(value).zfill(l)
-		if form == 'o':
+		if radix == 8:
 			l = int(math.ceil(length/3.0))
-			return "0o"+"{:o}".format(value).zfill(l)
-		if form == 'b' or form == 't':
+			return "0"+"{:o}".format(value).zfill(l)
+		if radix == 2:
 			return "0b"+"{:b}".format(value).zfill(length)
 		# Default: Just return in decimal
 		return str(value)
