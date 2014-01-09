@@ -20,5 +20,7 @@ along with PyCortexMDebug.  If not, see <http://www.gnu.org/licenses/>.
 
 
 from cmdebug.svd_gdb import LoadSVD
+from cmdebug.dwt_gdb import DWT
 
+DWT()
 LoadSVD()
