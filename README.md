@@ -48,6 +48,16 @@ You can add format modifiers like:
 All field values are displayed at the correct lengths as provided by the SVD files.
 Also, tab completion exists for nearly everything! When in doubt, run `svd help`.
 
+### TODO
+
+Enable writing to registers and individual fields
+
+### Bugs
+
+There are probably a few. All planning, writing, and testing of this was done in an afternoon. There may be
+some oddities in working with non-STM32 parts. I'll play with this when I start working with other
+controllers again. If something's giving you trouble, describe the problem and it shall be fixed.
+
 ## DWT
 The ARM Data Watchpoint and Trace Unit (DWT) offers data watchpoints and a series of gated cycle counters. For now,
 I only support the raw cycle counter but facilities are in place to make use of others. As this is independent of the
@@ -66,16 +76,6 @@ will reset and start the cycle counter. At any point
     dwt cycnt
 
 will then indicate the number of cycles and amount of time that has passed.
-
-### TODO
-
-Enable writing to registers and individual fields
-
-### Bugs
-
-There are probably a few. All planning, writing, and testing of this was done in an afternoon. There may be
-some oddities in working with non-STM32 parts. I'll play with this when I start working with other
-controllers again. If something's giving you trouble, describe the problem and it shall be fixed.
 
 ## ITM/ETM support
 
