@@ -48,6 +48,25 @@ You can add format modifiers like:
 All field values are displayed at the correct lengths as provided by the SVD files.
 Also, tab completion exists for nearly everything! When in doubt, run `svd help`.
 
+## DWT
+The ARM Data Watchpoint and Trace Unit (DWT) offers data watchpoints and a series of gated cycle counters. For now,
+I only support the raw cycle counter but facilities are in place to make use of others. As this is independent of the
+specific device under test, commands are simple and you can configure a clock speed to get real time values from
+counters.
+
+    dwt configclk 48000000
+    
+will set the current core clock speed. Then
+
+    dwt cyccnt reset
+    dwt cyccnt enable
+
+will reset and start the cycle counter. At any point
+
+    dwt cycnt
+
+will then indicate the number of cycles and amount of time that has passed.
+
 ### TODO
 
 Enable writing to registers and individual fields
