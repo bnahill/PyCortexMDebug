@@ -27,6 +27,7 @@ DWT_LSUCNT   = 0xE0001014
 DWT_FOLDCNT  = 0xE0001018
 DWT_PCSR     = 0xE000101C
 
+prefix = "dwt : "
 
 class DWT(gdb.Command):
 	clk = None
@@ -47,7 +48,7 @@ class DWT(gdb.Command):
 		"""
 		t = "uint{:d}_t".format(bits)
 		cmd = "set *({} *){} = {}".format(t, address, value)
-		gdb.write("RUN: {}\n".format(cmd))
+		#gdb.write("RUN: {}\n".format(cmd))
 		gdb.execute(cmd, True, True)
 	
 	def invoke(self, args, from_tty):
@@ -70,23 +71,23 @@ class DWT(gdb.Command):
 					self.cyccnt_reset()
 				elif(s[1][0] == "d"):
 					self.cyccnt_dis()
-			gdb.write("CYCCNT ({}): ".format("ON" if (self.read(DWT_CTRL) & 1) else "OFF") +
-				self.cycles_str(self.read(DWT_CYCCNT)) + "/n")
+			gdb.write(prefix + "CYCCNT ({}): ".format("ON" if (self.read(DWT_CTRL) & 1) else "OFF") +
+				self.cycles_str(self.read(DWT_CYCCNT)))
 		elif(s[0] == "reset"):
 			if(len(s) > 1):
 				if(s[1] == "cyccnt"):
 					self.cyccnt_reset()
-					gdb.write("CYCCNT reset\n")
+					gdb.write(prefix + "CYCCNT reset\n")
 				if(s[1] == "counters"):
 					self.cyccnt_reset()
-					gdb.write("CYCCNT reset\n")
+					gdb.write(prefix + "CYCCNT reset\n")
 				else:
 					self.cyccnt_reset()
-					gdb.write("CYCCNT reset\n")
+					gdb.write(prefix + "CYCCNT reset\n")
 			else:
 				# Reset everything
 				self.cyccnt_reset()
-				gdb.write("CYCCNT reset\n")
+				gdb.write(prefix + "CYCCNT reset\n")
 		elif(s[0] == "configclk"):
 			if(len(s) == 2):
 				try:
@@ -99,7 +100,24 @@ class DWT(gdb.Command):
 			# Try to figure out what stupid went on here
 			gdb.write(args)
 			self.print_help()
-	
+
+	def complete(self, text, word):
+		text = str(text).lower()
+		s = text.split(" ")
+		
+		commands = ['configclk', 'reset', 'cyccnt']
+		reset_commands = ['counters', 'cyccnt']
+		cyccnt_commands = ['enable', 'reset', 'disable']
+
+
+		if len(s) == 1:
+			return filter(lambda x:x.startswith(s[0]), commands)
+
+		if len(s) == 2:
+			if s[0] == 'reset':
+				return filter(lambda x:x.startswith(s[1]), reset_commands)
+			if s[0] == 'cyccnt':
+				return filter(lambda x:x.startswith(s[1]), cyccnt_commands)
 	def cycles_str(self, cycles):
 		if self.clk:
 			return("%d cycles, %.3es\n" % (cycles, cycles * 1.0 / self.clk))
@@ -121,7 +139,7 @@ class DWT(gdb.Command):
 	def print_help(self):
 		gdb.write("Usage:\n")
 		gdb.write("=========\n")
-		gdb.write("dwr:\n")
+		gdb.write("dwt:\n")
 		gdb.write("\tList available peripherals\n")
 		gdb.write("dwt configclk [Hz]:\n")
 		gdb.write("\tSet clock for rendering time values in seconds\n")
