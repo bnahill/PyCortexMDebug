@@ -44,7 +44,22 @@ class SVDPeripheral:
 			self.name = str(svd_elem.name)
 			self.registers = OrderedDict()
 			for r in registers:
-				self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
+				try:
+					dim = r.dim
+					# dimension is not used, number of split indexes should be same
+					incr = int(str(r.dimIncrement), 0)
+					indexes = str(r.dimIndex).split(',')
+				except:
+					self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
+					continue
+				offset = 0
+				for i in indexes:
+					name = str(r.name) % i;
+					reg = SVDPeripheralRegister(r, self)
+					reg.name = name
+					reg.offset += offset
+					self.registers[name] = reg
+					offset += incr
 			return
 		try:
 			self.name = str(svd_elem.name)
@@ -92,7 +107,10 @@ class SVDPeripheralRegisterField:
 	def __init__(self, svd_elem, parent):
 		self.parent = parent
 		self.name = str(svd_elem.name)
-		self.description = str(svd_elem.description)
+		try:
+			self.description = str(svd_elem.description)
+		except AttributeError:
+			self.description = ''
 		self.offset = int(str(svd_elem.bitOffset))
 		self.width = int(str(svd_elem.bitWidth))
 		try:
