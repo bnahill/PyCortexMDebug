@@ -178,11 +178,10 @@ class SVD(gdb.Command):
 			return filt
 	
 	def read(self, address, bits = 32):
-		""" Read from memory (using print) and return an integer
+		""" Read from memory and return an integer
 		"""
-		t = "uint{:d}_t".format(bits)
-		cmd = "print *({} *){}".format(t, address)
-		return int(gdb.execute(cmd, True, True).split(" ")[-1], base = 0)
+		exp = "*(uint{:d}_t*)0x{:x}".format(bits, address)
+		return int(gdb.parse_and_eval(exp))
 	
 	def format(self, value, form, length=32):
 		""" Format a number based on a format character and length
