@@ -107,7 +107,10 @@ class SVDPeripheralRegisterField:
 	def __init__(self, svd_elem, parent):
 		self.parent = parent
 		self.name = str(svd_elem.name)
-		self.description = str(svd_elem.description)
+		try:
+			self.description = str(svd_elem.description)
+		except AttributeError:
+			self.description = ''
 		self.offset = int(str(svd_elem.bitOffset))
 		self.width = int(str(svd_elem.bitWidth))
 		try:
