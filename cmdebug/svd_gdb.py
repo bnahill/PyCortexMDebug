@@ -150,6 +150,34 @@ class SVD(gdb.Command):
 					gdb.write("  {}".format(field[2]))
 				gdb.write("\n");
 			return
+
+		if len(s) == 4:
+			try:
+				reg = self.svd_file.peripherals[s[0]].registers[s[1]]
+			except KeyError:
+				gdb.write("Register {} in peripheral {} does not exist!\n".format(s[1], s[0]))
+				return
+			try:
+				field = reg.fields[s[2]]
+			except KeyError:
+				gdb.write("Field {} in register {} in peripheral {} does not exist!\n".format(s[2], s[1], s[0]))
+				return
+
+			if len(s[3]) != field.width:
+				gdb.write("Field {} in register {} has {} bits but only {} bits specified!\n".format(s[2], s[1], field.width, len(s[3])))
+				return
+
+			try:
+				val = int(s[3], 2)
+			except ValueError:
+				gdb.write("Bits must be all 0's and 1's, but {} is not only 0's and 1's!\n".format(s[3]))
+				return
+
+			data = self.read(reg.address(), reg.size)
+			data &= (~(1 << (field.width) - 1)) <<  field.offset
+			data |= (val) << field.offset
+			self.write(reg.address(), data, reg.size)
+			return
 		
 		gdb.write("Unknown input\n")
 	
@@ -182,6 +210,13 @@ class SVD(gdb.Command):
 		"""
 		exp = "*(uint{:d}_t*)0x{:x}".format(bits, address)
 		return int(gdb.parse_and_eval(exp))
+
+	def write(self, address, data, bits = 32):
+		""" Read from memory and return an integer
+		"""
+		exp = "set {{uint{:d}}}0x{:x} = {:d}".format(bits, address, data)
+		exp = "*(uint{:d}_t*)0x{:x} = {:d}".format(bits, address, data)
+		return gdb.parse_and_eval(exp)
 	
 	def format(self, value, form, length=32):
 		""" Format a number based on a format character and length
