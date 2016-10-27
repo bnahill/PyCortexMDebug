@@ -74,7 +74,11 @@ class SVDPeripheral:
 
 	def refactor_parent(self, parent):
 		self.parent = parent
-		for r in self.registers.itervalues():
+		try:
+			values = self.registers.itervalues()
+		except AttributeError:
+			values = self.registers.values()
+		for r in values:
 			r.refactor_parent(self)
 			
 	def __unicode__(self):
@@ -94,7 +98,11 @@ class SVDPeripheralRegister:
 	
 	def refactor_parent(self, parent):
 		self.parent = parent
-		for f in self.fields.itervalues():
+		try:
+			fields = self.fields.itervalues()
+		except AttributeError:
+			fields = self.fields.values()
+		for f in fields:
 			f.refactor_parent(self)
 
 	def address(self):

@@ -92,8 +92,16 @@ class SVD(gdb.Command):
 
 		if not len(s[0]):
 			gdb.write("Available Peripherals:\n")
-			columnWidth = max(len(p.name) for p in self.svd_file.peripherals.itervalues()) + 2 # padding
-			for p in self.svd_file.peripherals.itervalues():
+			try:
+				peripherals = self.svd_file.peripherals.itervalues()
+			except AttributeError:
+				peripherals = self.svd_file.peripherals.values()
+			columnWidth = max(len(p.name) for p in peripherals) + 2 # padding
+			try:
+				peripherals = self.svd_file.peripherals.itervalues()
+			except AttributeError:
+				peripherals = self.svd_file.peripherals.values()
+			for p in peripherals:
 				desc = re.sub(r'\s+', ' ', p.description)
 				gdb.write("\t{}:{}{}\n".format(p.name, "".ljust(columnWidth - len(p.name)) , desc))
 			return
@@ -106,7 +114,11 @@ class SVD(gdb.Command):
 				return
 			gdb.write("Registers in %s:\n" % s[0])
 			regList = []
-			for r in regs.itervalues():
+			try:
+				regs_iter = regs.itervalues()
+			except AttributeError:
+				regs_iter = regs.values()
+			for r in regs_iter:
 				data = self.read(r.address(), r.size)
 				data = self.format(data, form, r.size)
 				if form == 'a':
@@ -135,7 +147,11 @@ class SVD(gdb.Command):
 			fields = reg.fields
 			data = self.read(reg.address(), reg.size)
 			fieldList = []
-			for f in fields.itervalues():
+			try:
+				fields_iter = fields.itervalues()
+			except AttributeError:
+				fields_iter = fields.values()
+			for f in fields_iter:
 				val = data >> f.offset
 				val &= (1 << f.width) - 1
 				val = self.format(val, form, f.width)
@@ -211,11 +227,19 @@ class SVD(gdb.Command):
 		return str(value)
 
 	def peripheral_list(self):
-		return list(self.svd_file.peripherals.iterkeys())
+		try:
+			keys = self.svd_file.peripherals.iterkeys()
+		except AttributeError:
+			keys = elf.svd_file.peripherals.keys()
+		return list(keys)
 	
 	def register_list(self, peripheral):
 		try:
-			return list(self.svd_file.peripherals[peripheral].registers.iterkeys())
+			try:
+				keys = self.svd_file.peripherals[peripheral].registers.iterkeys()
+			except AttributeError:
+				keys = self.svd_file.peripherals[peripheral].registers.keys()
+			return list(keys)
 		except:
 			gdb.write("Peripheral {} doesn't exist\n".format(peripheral))
 			return []
@@ -224,7 +248,11 @@ class SVD(gdb.Command):
 		try:
 			periph = svd_file.peripherals[peripheral]
 			reg = periph.registers[register]
-			return list(reg.fields.iterkeys())
+			try:
+				regs = reg.fields.iterkeys()
+			except AttributeError:
+				regs = reg.fields.keys()
+			return list(regs)
 		except:
 			gdb.write("Register {} doesn't exist on {}\n".format(register, peripheral))
 			return []
