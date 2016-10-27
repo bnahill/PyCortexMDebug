@@ -179,14 +179,14 @@ class SVD(gdb.Command):
 				gdb.write("Field {} in register {} in peripheral {} does not exist!\n".format(s[2], s[1], s[0]))
 				return
 
-			if len(s[3]) != field.width:
-				gdb.write("Field {} in register {} has {} bits but only {} bits specified!\n".format(s[2], s[1], field.width, len(s[3])))
+			try:
+				val = int(s[3], 0)
+			except ValueError:
+				gdb.write("{} is not a valid number! You can prefix numbers with 0x for hex, 0b for binary, or any python int literal\n".format(s[3]))
 				return
 
-			try:
-				val = int(s[3], 2)
-			except ValueError:
-				gdb.write("Bits must be all 0's and 1's, but {} is not only 0's and 1's!\n".format(s[3]))
+			if val >= 1 << field.width or val < 0:
+				gdb.write("{} not a valid number for a field with width {}!\n".format(val, field.width))
 				return
 
 			data = self.read(reg.address(), reg.size)
