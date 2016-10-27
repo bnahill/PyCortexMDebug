@@ -190,7 +190,7 @@ class SVD(gdb.Command):
 				return
 
 			data = self.read(reg.address(), reg.size)
-			data &= (~(1 << (field.width) - 1)) <<  field.offset
+			data &= ~(((1 << field.width) - 1) <<  field.offset)
 			data |= (val) << field.offset
 			self.write(reg.address(), data, reg.size)
 			return
