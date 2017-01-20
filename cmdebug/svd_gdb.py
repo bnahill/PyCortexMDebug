@@ -21,7 +21,7 @@ import re
 import math
 import sys
 sys.path.append('.')
-from svd import SVDFile
+from cmdebug.svd import SVDFile
 
 #from svd_test import *
 
