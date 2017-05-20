@@ -20,7 +20,6 @@ import lxml.objectify as objectify
 import sys
 from copy import deepcopy
 from collections import OrderedDict
-from pprint import pprint
 
 class SVDFile:
 	def __init__(self, fname):
@@ -30,10 +29,10 @@ class SVDFile:
 		self.peripherals = OrderedDict()
 		# XML elements
 		for p in periph:
-                    try:
-			self.peripherals[str(p.name)] = SVDPeripheral(p, self)
-                    except:
-                        pass
+			try:
+				self.peripherals[str(p.name)] = SVDPeripheral(p, self)
+			except:
+				pass
 
 class SVDPeripheral:
 	def __init__(self, svd_elem, parent):
@@ -54,11 +53,11 @@ class SVDPeripheral:
 				    incr = int(str(r.dimIncrement), 0)
 				    indexes = str(r.dimIndex).split(',')
 				except:
-                                    try:
-        			        self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
-                                    except:
-                                        pass
-				    continue
+					try:
+						self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
+					except:
+						pass
+					continue
 				offset = 0
 				for i in indexes:
 					name = str(r.name) % i;
@@ -87,7 +86,7 @@ class SVDPeripheral:
 			values = self.registers.values()
 		for r in values:
 			r.refactor_parent(self)
-			
+
 	def __unicode__(self):
 		return str(self.name)
 
@@ -108,7 +107,7 @@ class SVDPeripheralRegister:
 				self.fields[str(f.name)] = SVDPeripheralRegisterField(f, self)
 		except:
 			pass
-	
+
 	def refactor_parent(self, parent):
 		self.parent = parent
 		try:
@@ -120,7 +119,7 @@ class SVDPeripheralRegister:
 
 	def address(self):
 		return self.parent.base_address + self.offset
-	
+
 	def __unicode__(self):
 		return str(self.name)
 
@@ -146,7 +145,7 @@ class SVDPeripheralRegisterField:
 
 	def refactor_parent(self, parent):
 		self.parent = parent
-	
+
 	def __unicode__(self):
 		return str(self.name)
 
