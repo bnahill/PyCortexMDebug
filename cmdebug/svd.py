@@ -20,6 +20,7 @@ import lxml.objectify as objectify
 import sys
 from copy import deepcopy
 from collections import OrderedDict
+from pprint import pprint
 
 class SVDFile:
 	def __init__(self, fname):
@@ -29,7 +30,10 @@ class SVDFile:
 		self.peripherals = OrderedDict()
 		# XML elements
 		for p in periph:
+                    try:
 			self.peripherals[str(p.name)] = SVDPeripheral(p, self)
+                    except:
+                        pass
 
 class SVDPeripheral:
 	def __init__(self, svd_elem, parent):
@@ -45,13 +49,16 @@ class SVDPeripheral:
 			self.registers = OrderedDict()
 			for r in registers:
 				try:
-					dim = r.dim
-					# dimension is not used, number of split indexes should be same
-					incr = int(str(r.dimIncrement), 0)
-					indexes = str(r.dimIndex).split(',')
+				    dim = r.dim
+				    # dimension is not used, number of split indexes should be same
+				    incr = int(str(r.dimIncrement), 0)
+				    indexes = str(r.dimIndex).split(',')
 				except:
-					self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
-					continue
+                                    try:
+        			        self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
+                                    except:
+                                        pass
+				    continue
 				offset = 0
 				for i in indexes:
 					name = str(r.name) % i;
@@ -90,11 +97,17 @@ class SVDPeripheralRegister:
 		self.name = str(svd_elem.name)
 		self.description = str(svd_elem.description)
 		self.offset = int(str(svd_elem.addressOffset),0)
-		self.size = int(str(svd_elem.size),0)
-		fields = svd_elem.fields.getchildren()
+		try:
+			self.size = int(str(svd_elem.size),0)
+		except:
+			self.size = 0x20
 		self.fields = OrderedDict()
-		for f in fields:
-			self.fields[str(f.name)] = SVDPeripheralRegisterField(f, self)
+		try:
+			fields = svd_elem.fields.getchildren()
+			for f in fields:
+				self.fields[str(f.name)] = SVDPeripheralRegisterField(f, self)
+		except:
+			pass
 	
 	def refactor_parent(self, parent):
 		self.parent = parent
@@ -119,8 +132,13 @@ class SVDPeripheralRegisterField:
 			self.description = str(svd_elem.description)
 		except AttributeError:
 			self.description = ''
-		self.offset = int(str(svd_elem.bitOffset))
-		self.width = int(str(svd_elem.bitWidth))
+		try:
+			self.offset = int(str(svd_elem.bitOffset))
+			self.width = int(str(svd_elem.bitWidth))
+		except:
+			bitrange = map(int, str(svd_elem.bitRange).strip()[1:-1].split(":"))
+			self.offset = bitrange[1]
+			self.width = 1 + bitrange[0] - bitrange[1]
 		try:
 			self.access = svd_elem.access
 		except AttributeError:
