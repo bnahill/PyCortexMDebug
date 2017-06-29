@@ -97,6 +97,10 @@ class SVDPeripheralRegister:
 		self.description = str(svd_elem.description)
 		self.offset = int(str(svd_elem.addressOffset),0)
 		try:
+			self.access = svd_elem.access
+		except:
+			self.access = "read-write"
+		try:
 			self.size = int(str(svd_elem.size),0)
 		except:
 			self.size = 0x20
@@ -120,6 +124,12 @@ class SVDPeripheralRegister:
 	def address(self):
 		return self.parent.base_address + self.offset
 
+	def readable(self):
+		return self.access in ["read-only", "read-write", "read-writeOnce"]
+	
+	def writable(self):
+		return self.access in ["write-only", "read-write", "writeOnce", "read-writeOnce"]
+
 	def __unicode__(self):
 		return str(self.name)
 
@@ -141,11 +151,17 @@ class SVDPeripheralRegisterField:
 		try:
 			self.access = svd_elem.access
 		except AttributeError:
-			self.access = ''
+			self.access = parent.access
 
 	def refactor_parent(self, parent):
 		self.parent = parent
 
+	def readable(self):
+		return self.access in ["read-only", "read-write", "read-writeOnce"]
+	
+	def writable(self):
+		return self.access in ["write-only", "read-write", "writeOnce", "read-writeOnce"]
+	
 	def __unicode__(self):
 		return str(self.name)
 

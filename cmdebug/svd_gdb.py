@@ -119,12 +119,15 @@ class SVD(gdb.Command):
 			except AttributeError:
 				regs_iter = regs.values()
 			for r in regs_iter:
-				data = self.read(r.address(), r.size)
-				data = self.format(data, form, r.size)
-				if form == 'a':
-					data += " <" + re.sub(r'\s+', ' ',
-						gdb.execute("info symbol {}".format(data), True,
-						True).strip()) + ">"
+				if r.readable():
+					data = self.read(r.address(), r.size)
+					data = self.format(data, form, r.size)
+					if form == 'a':
+						data += " <" + re.sub(r'\s+', ' ',
+							gdb.execute("info symbol {}".format(data), True,
+							True).strip()) + ">"
+				else:
+					data = "(not readable)"
 				desc = re.sub(r'\s+', ' ', r.description)
 				regList.append((r.name, data, desc))
 
@@ -145,16 +148,22 @@ class SVD(gdb.Command):
 				return
 			gdb.write("Fields in {} of peripheral {}:\n".format(s[1], s[0]))
 			fields = reg.fields
-			data = self.read(reg.address(), reg.size)
+			if !reg.readable():
+				data = 0
+			else:
+				data = self.read(reg.address(), reg.size)
 			fieldList = []
 			try:
 				fields_iter = fields.itervalues()
 			except AttributeError:
 				fields_iter = fields.values()
 			for f in fields_iter:
-				val = data >> f.offset
-				val &= (1 << f.width) - 1
-				val = self.format(val, form, f.width)
+				if reg.readable():
+					val = data >> f.offset
+					val &= (1 << f.width) - 1
+					val = self.format(val, form, f.width)
+				else:
+					val = "(not readable)"
 				desc = re.sub(r'\s+', ' ', f.description)
 				fieldList.append((f.name, val, desc))
 
@@ -179,6 +188,10 @@ class SVD(gdb.Command):
 				gdb.write("Field {} in register {} in peripheral {} does not exist!\n".format(s[2], s[1], s[0]))
 				return
 
+			if !field.writable() or !reg.writable():
+				gdb.write("Field {} in register {} in peripheral {} is read-only!\n".format(s[2], s[1], s[0]))
+				return
+
 			try:
 				val = int(s[3], 0)
 			except ValueError:
@@ -189,7 +202,10 @@ class SVD(gdb.Command):
 				gdb.write("{} not a valid number for a field with width {}!\n".format(val, field.width))
 				return
 
-			data = self.read(reg.address(), reg.size)
+			if !reg.readable():
+				data = 0
+			else:
+				data = self.read(reg.address(), reg.size)
 			data &= ~(((1 << field.width) - 1) <<  field.offset)
 			data |= (val) << field.offset
 			self.write(reg.address(), data, reg.size)
