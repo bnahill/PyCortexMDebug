@@ -148,7 +148,7 @@ class SVD(gdb.Command):
 				return
 			gdb.write("Fields in {} of peripheral {}:\n".format(s[1], s[0]))
 			fields = reg.fields
-			if !reg.readable():
+			if not reg.readable():
 				data = 0
 			else:
 				data = self.read(reg.address(), reg.size)
@@ -188,7 +188,7 @@ class SVD(gdb.Command):
 				gdb.write("Field {} in register {} in peripheral {} does not exist!\n".format(s[2], s[1], s[0]))
 				return
 
-			if !field.writable() or !reg.writable():
+			if not field.writable() or not reg.writable():
 				gdb.write("Field {} in register {} in peripheral {} is read-only!\n".format(s[2], s[1], s[0]))
 				return
 
@@ -202,7 +202,7 @@ class SVD(gdb.Command):
 				gdb.write("{} not a valid number for a field with width {}!\n".format(val, field.width))
 				return
 
-			if !reg.readable():
+			if not reg.readable():
 				data = 0
 			else:
 				data = self.read(reg.address(), reg.size)

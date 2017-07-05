@@ -97,7 +97,7 @@ class SVDPeripheralRegister:
 		self.description = str(svd_elem.description)
 		self.offset = int(str(svd_elem.addressOffset),0)
 		try:
-			self.access = svd_elem.access
+			self.access = str(svd_elem.access)
 		except:
 			self.access = "read-write"
 		try:
@@ -149,7 +149,7 @@ class SVDPeripheralRegisterField:
 			self.offset = bitrange[1]
 			self.width = 1 + bitrange[0] - bitrange[1]
 		try:
-			self.access = svd_elem.access
+			self.access = str(svd_elem.access)
 		except AttributeError:
 			self.access = parent.access
 
