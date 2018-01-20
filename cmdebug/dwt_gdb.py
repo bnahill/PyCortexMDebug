@@ -17,6 +17,7 @@ along with PyCortexMDebug.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import gdb
+import struct
 
 DWT_CTRL     = 0xE0001000
 DWT_CYCCNT   = 0xE0001004
@@ -39,18 +40,14 @@ class DWT(gdb.Command):
 	def read(self, address, bits = 32):
 		""" Read from memory (using print) and return an integer
 		"""
-		t = "uint{:d}_t".format(bits)
-		cmd = "print *({} *){}".format(t, address)
-		return(int(gdb.execute(cmd, True, True).split(" ")[-1], base = 0))
-		
+		value = gdb.selected_inferior().read_memory(address, bits/8)
+		return struct.unpack_from("<i", value)[0]
+
 	def write(self, address, value, bits = 32):
 		""" Set a value in memory
 		"""
-		t = "uint{:d}_t".format(bits)
-		cmd = "set *({} *){} = {}".format(t, address, value)
-		#gdb.write("RUN: {}\n".format(cmd))
-		gdb.execute(cmd, True, True)
-	
+		gdb.selected_inferior().write_memory(address, bytes(value), bits/8)
+
 	def invoke(self, args, from_tty):
 		if(not self.is_init):
 			self.write(0xE000EDFC, self.read(0xE000EDFC) | (1 << 24))
