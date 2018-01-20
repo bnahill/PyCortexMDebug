@@ -245,7 +245,7 @@ class SVD(gdb.Command):
 		return struct.unpack_from("<i", value)[0]
 
 	def write(self, address, data, bits = 32):
-		""" Read from memory and return an integer
+		""" Write data to memory
 		"""
 		gdb.selected_inferior().write_memory(address, bytes(data), bits/8)
 
