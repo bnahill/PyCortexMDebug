@@ -20,10 +20,11 @@ import lxml.objectify as objectify
 import sys
 from copy import deepcopy
 from collections import OrderedDict
+import os
 
 class SVDFile:
 	def __init__(self, fname):
-		f = objectify.parse(fname)
+		f = objectify.parse(os.path.expanduser(fname))
 		root = f.getroot()
 		periph = root.peripherals.getchildren()
 		self.peripherals = OrderedDict()
