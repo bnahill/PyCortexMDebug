@@ -145,9 +145,15 @@ class SVDPeripheralRegisterField:
 			self.offset = int(str(svd_elem.bitOffset))
 			self.width = int(str(svd_elem.bitWidth))
 		except:
-			bitrange = map(int, str(svd_elem.bitRange).strip()[1:-1].split(":"))
-			self.offset = bitrange[1]
-			self.width = 1 + bitrange[0] - bitrange[1]
+			try:
+				bitrange = map(int, str(svd_elem.bitRange).strip()[1:-1].split(":"))
+				self.offset = bitrange[1]
+				self.width = 1 + bitrange[0] - bitrange[1]
+			except:
+				lsb = int(str(svd_elem.lsb))
+				msb = int(str(svd_elem.msb))
+				self.offset = lsb
+				self.width = 1 + msb - lsb
 		try:
 			self.access = str(svd_elem.access)
 		except AttributeError:
