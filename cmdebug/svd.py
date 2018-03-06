@@ -109,8 +109,12 @@ class SVDPeripheralRegister:
 			fields = svd_elem.fields.getchildren()
 			for f in fields:
 				self.fields[str(f.name)] = SVDPeripheralRegisterField(f, self)
-		except:
-			pass
+		except AttributeError:
+		        if fields:
+                                raise
+		        else:
+                                # if node has no field, skip
+                                pass
 
 	def refactor_parent(self, parent):
 		self.parent = parent
