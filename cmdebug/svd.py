@@ -49,10 +49,10 @@ class SVDPeripheral:
 			self.registers = OrderedDict()
 			for r in registers:
 				try:
-				    dim = r.dim
-				    # dimension is not used, number of split indexes should be same
-				    incr = int(str(r.dimIncrement), 0)
-				    indexes = str(r.dimIndex).split(',')
+					dim = r.dim
+					# dimension is not used, number of split indexes should be same
+					incr = int(str(r.dimIncrement), 0)
+					indexes = str(r.dimIndex).split(',')
 				except:
 					try:
 						self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
