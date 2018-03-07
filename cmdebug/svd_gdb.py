@@ -20,6 +20,7 @@ import gdb
 import re
 import math
 import sys
+import struct
 sys.path.append('.')
 from cmdebug.svd import SVDFile
 
@@ -240,16 +241,14 @@ class SVD(gdb.Command):
 	def read(self, address, bits = 32):
 		""" Read from memory and return an integer
 		"""
-		exp = "*(uint{:d}_t*)0x{:x}".format(bits, address)
-		return int(gdb.parse_and_eval(exp))
+		value = gdb.selected_inferior().read_memory(address, bits/8)
+		return struct.unpack_from("<i", value)[0]
 
 	def write(self, address, data, bits = 32):
-		""" Read from memory and return an integer
+		""" Write data to memory
 		"""
-		exp = "set {{uint{:d}}}0x{:x} = {:d}".format(bits, address, data)
-		exp = "*(uint{:d}_t*)0x{:x} = {:d}".format(bits, address, data)
-		return gdb.parse_and_eval(exp)
-	
+		gdb.selected_inferior().write_memory(address, bytes(data), bits/8)
+
 	def format(self, value, form, length=32):
 		""" Format a number based on a format character and length
 		"""
