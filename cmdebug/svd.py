@@ -20,10 +20,11 @@ import lxml.objectify as objectify
 import sys
 from copy import deepcopy
 from collections import OrderedDict
+import os
 
 class SVDFile:
 	def __init__(self, fname):
-		f = objectify.parse(fname)
+		f = objectify.parse(os.path.expanduser(fname))
 		root = f.getroot()
 		periph = root.peripherals.getchildren()
 		self.peripherals = OrderedDict()
@@ -48,10 +49,10 @@ class SVDPeripheral:
 			self.registers = OrderedDict()
 			for r in registers:
 				try:
-				    dim = r.dim
-				    # dimension is not used, number of split indexes should be same
-				    incr = int(str(r.dimIncrement), 0)
-				    indexes = str(r.dimIndex).split(',')
+					dim = r.dim
+					# dimension is not used, number of split indexes should be same
+					incr = int(str(r.dimIncrement), 0)
+					indexes = str(r.dimIndex).split(',')
 				except:
 					try:
 						self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
