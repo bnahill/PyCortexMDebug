@@ -30,24 +30,21 @@ class SVDFile:
 		self.peripherals = OrderedDict()
 		# XML elements
 		for p in periph:
-			try:
-				self.peripherals[str(p.name)] = SVDPeripheral(p, self)
-			except:
-				pass
+			self.peripherals[str(p.name)] = SVDPeripheral(p, self)
 
-class SVDPeripheral:
+class SVDRegisterCluster:
 	def __init__(self, svd_elem, parent):
 		self.parent = parent
-		self.base_address = int(str(svd_elem.baseAddress), 0)
-		try:
-			derived_from = svd_elem.attrib['derivedFrom']
-		except KeyError:
-			# This doesn't inherit registers from anything
-			registers = svd_elem.registers.getchildren()
-			self.description = str(svd_elem.description)
-			self.name = str(svd_elem.name)
-			self.registers = OrderedDict()
-			for r in registers:
+		self.address_offset = int(str(svd_elem.addressOffset), 0)
+		self.base_address = self.address_offset + parent.base_address
+		# This doesn't inherit registers from anything
+		children = svd_elem.getchildren()
+		self.description = str(svd_elem.description)
+		self.name = str(svd_elem.name)
+		self.registers = OrderedDict()
+		self.clusters = OrderedDict()
+		for r in children:
+			if r.tag == "register":
 				try:
 					dim = r.dim
 					# dimension is not used, number of split indexes should be same
@@ -67,17 +64,67 @@ class SVDPeripheral:
 					reg.offset += offset
 					self.registers[name] = reg
 					offset += incr
-			return
+
+	def refactor_parent(self, parent):
+		self.parent = parent
+		self.base_address = parent.base_address + self.address_offset
 		try:
-			self.name = str(svd_elem.name)
-		except:
-			self.name = parent.peripherals[derived_from].name
-		try:
+			values = self.registers.itervalues()
+		except AttributeError:
+			values = self.registers.values()
+		for r in values:
+			r.refactor_parent(self)
+
+	def __unicode__(self):
+		return str(self.name)
+
+class SVDPeripheral:
+	def __init__(self, svd_elem, parent):
+		self.parent = parent
+		self.base_address = int(str(svd_elem.baseAddress), 0)
+		if 'derivedFrom' in svd_elem.attrib:
+			derived_from = svd_elem.attrib['derivedFrom']
+			try:
+				self.name = str(svd_elem.name)
+			except:
+				self.name = parent.peripherals[derived_from].name
+			try:
+				self.description = str(svd_elem.description)
+			except:
+				self.description = parent.peripherals[derived_from].description
+			self.registers = deepcopy(parent.peripherals[derived_from].registers)
+			self.clusters = deepcopy(parent.peripherals[derived_from].clusters)
+			self.refactor_parent(parent)
+		else:
+			# This doesn't inherit registers from anything
+			registers = svd_elem.registers.getchildren()
 			self.description = str(svd_elem.description)
-		except:
-			self.description = parent.peripherals[derived_from].description
-		self.registers = deepcopy(parent.peripherals[derived_from].registers)
-		self.refactor_parent(parent)
+			self.name = str(svd_elem.name)
+			self.registers = OrderedDict()
+			self.clusters = OrderedDict()
+			for r in registers:
+				if r.tag == "cluster":
+					self.clusters[str(r.name)] = SVDRegisterCluster(r, self)
+				else:
+					try:
+						dim = r.dim
+						# dimension is not used, number of split indexes should be same
+						incr = int(str(r.dimIncrement), 0)
+						indexes = str(r.dimIndex).split(',')
+					except:
+						try:
+							self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
+						except:
+							pass
+						continue
+					offset = 0
+					for i in indexes:
+						name = str(r.name) % i;
+						reg = SVDPeripheralRegister(r, self)
+						reg.name = name
+						reg.offset += offset
+						self.registers[name] = reg
+						offset += incr
 
 	def refactor_parent(self, parent):
 		self.parent = parent
@@ -87,6 +134,8 @@ class SVDPeripheral:
 			values = self.registers.values()
 		for r in values:
 			r.refactor_parent(self)
+		for c in self.clusters.itervalues():
+			c.refactor_parent(self)
 
 	def __unicode__(self):
 		return str(self.name)
@@ -131,7 +180,7 @@ class SVDPeripheralRegister:
 
 	def readable(self):
 		return self.access in ["read-only", "read-write", "read-writeOnce"]
-	
+
 	def writable(self):
 		return self.access in ["write-only", "read-write", "writeOnce", "read-writeOnce"]
 
@@ -169,13 +218,14 @@ class SVDPeripheralRegisterField:
 
 	def readable(self):
 		return self.access in ["read-only", "read-write", "read-writeOnce"]
-	
+
 	def writable(self):
 		return self.access in ["write-only", "read-write", "writeOnce", "read-writeOnce"]
-	
+
 	def __unicode__(self):
 		return str(self.name)
 
-#if __name__ == '__main__':
-#	svd = SVDFile(sys.argv[1])
-#	print svd.peripherals['DMA1'].registers
+if __name__ == '__main__':
+	svd = SVDFile(sys.argv[1])
+	print(svd.peripherals['SERCOM0'].registers)
+	print(svd.peripherals['SERCOM0'].clusters["SPI"])

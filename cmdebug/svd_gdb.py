@@ -16,6 +16,7 @@ You should have received a copy of the GNU General Public License
 along with PyCortexMDebug.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import binascii
 import gdb
 import re
 import math
@@ -25,6 +26,12 @@ sys.path.append('.')
 from cmdebug.svd import SVDFile
 
 #from svd_test import *
+
+BITS_TO_UNPACK_FORMAT = {
+	8: "b",
+	16: "h",
+	32: "i",
+}
 
 class LoadSVD(gdb.Command):
 	""" A command to load an SVD file and to create the command for inspecting
@@ -41,28 +48,85 @@ class LoadSVD(gdb.Command):
 		except:
 			gdb.write("Please provide a filename (svd_load [filename])\n")
 			return
-		try:
-			svd_file = SVDFile(f)
-			SVD(svd_file)
-			gdb.write("Done!\n")
-		except:
-			gdb.write("Error loading file {}\n".format(f))
+		svd_file = SVDFile(f)
+		SVD(svd_file)
+		gdb.write("Done!\n")
 
 if __name__ == "__main__":
 	# This will also get executed by GDB
-	
+
 	# Create just the svd_load command
 	LoadSVD()
 
 class SVD(gdb.Command):
 	""" The CMSIS SVD (System View Description) inspector command
-	
+
 	This allows easy access to all peripheral registers supported by the system
 	in the GDB debug environment
 	"""
 	def __init__(self, svd_file):
 		gdb.Command.__init__(self, "svd", gdb.COMMAND_DATA)
 		self.svd_file = svd_file
+
+	def _print_registers(self, container_name, form, registers):
+		if len(registers) == 0:
+			return
+		try:
+			regs_iter = registers.itervalues()
+		except AttributeError:
+			regs_iter = registers.values()
+		gdb.write("Registers in %s:\n" % container_name)
+		regList = []
+		for r in regs_iter:
+			if r.readable():
+				data = self.read(r.address(), r.size)
+				data = self.format(data, form, r.size)
+				if form == 'a':
+					data += " <" + re.sub(r'\s+', ' ',
+						gdb.execute("info symbol {}".format(data), True,
+						True).strip()) + ">"
+			else:
+				data = "(not readable)"
+			desc = re.sub(r'\s+', ' ', r.description)
+			regList.append((r.name, data, desc))
+
+		column1Width = max(len(reg[0]) for reg in regList) + 2 # padding
+		column2Width = max(len(reg[1]) for reg in regList)
+		for reg in regList:
+			gdb.write("\t{}:{}{}".format(reg[0], "".ljust(column1Width - len(reg[0])), reg[1].rjust(column2Width)))
+			if reg[2] != reg[0]:
+				gdb.write("  {}".format(reg[2]))
+			gdb.write("\n")
+
+	def _print_register_fields(self, container_name, form, register):
+		gdb.write("Fields in {}:\n".format(container_name))
+		fields = register.fields
+		if not register.readable():
+			data = 0
+		else:
+			data = self.read(register.address(), register.size)
+		fieldList = []
+		try:
+			fields_iter = fields.itervalues()
+		except AttributeError:
+			fields_iter = fields.values()
+		for f in fields_iter:
+			if register.readable():
+				val = data >> f.offset
+				val &= (1 << f.width) - 1
+				val = self.format(val, form, f.width)
+			else:
+				val = "(not readable)"
+			desc = re.sub(r'\s+', ' ', f.description)
+			fieldList.append((f.name, val, desc))
+
+		column1Width = max(len(field[0]) for field in fieldList) + 2 # padding
+		column2Width = max(len(field[1]) for field in fieldList) # padding
+		for field in fieldList:
+			gdb.write("\t{}:{}{}".format(field[0], "".ljust(column1Width - len(field[0])), field[1].rjust(column2Width)))
+			if field[2] != field[0]:
+				gdb.write("  {}".format(field[2]))
+			gdb.write("\n");
 
 	def invoke(self, args, from_tty):
 		s = str(args).split(" ")
@@ -76,7 +140,7 @@ class SVD(gdb.Command):
 				if len(s) == 1:
 					return
 				s = s[1:]
-		
+
 		if s[0].lower() == 'help':
 			gdb.write("Usage:\n")
 			gdb.write("=========\n")
@@ -107,74 +171,58 @@ class SVD(gdb.Command):
 				gdb.write("\t{}:{}{}\n".format(p.name, "".ljust(columnWidth - len(p.name)) , desc))
 			return
 
-		if len(s) == 1:
-			try:
-				regs = self.svd_file.peripherals[s[0]].registers
-			except KeyError:
+		registers = None
+		if len(s) >= 1:
+			peripheral_name = s[0]
+			if peripheral_name not in self.svd_file.peripherals:
 				gdb.write("Peripheral {} does not exist!\n".format(s[0]))
 				return
-			gdb.write("Registers in %s:\n" % s[0])
-			regList = []
-			try:
-				regs_iter = regs.itervalues()
-			except AttributeError:
-				regs_iter = regs.values()
-			for r in regs_iter:
-				if r.readable():
-					data = self.read(r.address(), r.size)
-					data = self.format(data, form, r.size)
-					if form == 'a':
-						data += " <" + re.sub(r'\s+', ' ',
-							gdb.execute("info symbol {}".format(data), True,
-							True).strip()) + ">"
-				else:
-					data = "(not readable)"
-				desc = re.sub(r'\s+', ' ', r.description)
-				regList.append((r.name, data, desc))
 
-			column1Width = max(len(reg[0]) for reg in regList) + 2 # padding
-			column2Width = max(len(reg[1]) for reg in regList)
-			for reg in regList:
-				gdb.write("\t{}:{}{}".format(reg[0], "".ljust(column1Width - len(reg[0])), reg[1].rjust(column2Width)))
-				if reg[2] != reg[0]:
-					gdb.write("  {}".format(reg[2]))
-				gdb.write("\n");
+			peripheral = self.svd_file.peripherals[peripheral_name]
+
+		if len(s) == 1:
+			self._print_registers(s[0], form, peripheral.registers)
+			if len(peripheral.clusters) > 0:
+				try:
+					clusters_iter = peripheral.clusters.itervalues()
+				except AttributeError:
+					clusters_iter = peripheral.clusters.values()
+				gdb.write("Clusters in %s:\n" % peripheral_name)
+				regList = []
+				for r in clusters_iter:
+					desc = re.sub(r'\s+', ' ', r.description)
+					regList.append((r.name, "", desc))
+
+				column1Width = max(len(reg[0]) for reg in regList) + 2 # padding
+				column2Width = max(len(reg[1]) for reg in regList)
+				for reg in regList:
+					gdb.write("\t{}:{}{}".format(reg[0], "".ljust(column1Width - len(reg[0])), reg[1].rjust(column2Width)))
+					if reg[2] != reg[0]:
+						gdb.write("  {}".format(reg[2]))
+					gdb.write("\n")
 			return
-			
-		if len(s) == 2:
-			try:
-				reg = self.svd_file.peripherals[s[0]].registers[s[1]]
-			except KeyError:
-				gdb.write("Register {} in peripheral {} does not exist!\n".format(s[1], s[0]))
-				return
-			gdb.write("Fields in {} of peripheral {}:\n".format(s[1], s[0]))
-			fields = reg.fields
-			if not reg.readable():
-				data = 0
-			else:
-				data = self.read(reg.address(), reg.size)
-			fieldList = []
-			try:
-				fields_iter = fields.itervalues()
-			except AttributeError:
-				fields_iter = fields.values()
-			for f in fields_iter:
-				if reg.readable():
-					val = data >> f.offset
-					val &= (1 << f.width) - 1
-					val = self.format(val, form, f.width)
-				else:
-					val = "(not readable)"
-				desc = re.sub(r'\s+', ' ', f.description)
-				fieldList.append((f.name, val, desc))
 
-			column1Width = max(len(field[0]) for field in fieldList) + 2 # padding
-			column2Width = max(len(field[1]) for field in fieldList) # padding
-			for field in fieldList:
-				gdb.write("\t{}:{}{}".format(field[0], "".ljust(column1Width - len(field[0])), field[1].rjust(column2Width)))
-				if field[2] != field[0]:
-					gdb.write("  {}".format(field[2]))
-				gdb.write("\n");
+		cluster = None
+		if len(s) == 2:
+			container = " ".join(s[:2])
+			if s[1] in peripheral.clusters:
+				self._print_registers(container, form, peripheral.clusters[s[1]].registers)
+			elif s[1] in peripheral.registers:
+				self._print_register_fields(container, form, self.svd_file.peripherals[s[0]].registers[s[1]])
+			else:
+				gdb.write("Register/cluster {} in peripheral {} does not exist!\n".format(s[1], s[0]))
+			return
+
+		if len(s) == 3:
+			if s[1] not in peripheral.clusters:
+				gdb.write("Cluster {} in peripheral {} does not exist!\n".format(s[1], s[0]))
+			elif s[2] not in peripheral.clusters[s[1]].registers:
+				gdb.write("Register {} in cluster {} in peripheral {} does not exist!\n".format(s[2], s[1], s[0]))
+			else:
+				container = " ".join(s[:3])
+				cluster = peripheral.clusters[s[1]]
+				gdb.write(repr(cluster))
+				self._print_register_fields(container, form, cluster.registers[s[2]])
 			return
 
 		if len(s) == 4:
@@ -211,38 +259,42 @@ class SVD(gdb.Command):
 			data |= (val) << field.offset
 			self.write(reg.address(), data, reg.size)
 			return
-		
+
 		gdb.write("Unknown input\n")
-	
+
 	def complete(self, text, word):
 		""" Perform tab-completion for the command
 		"""
 		text = str(text)
 		s = text.split(" ")
-		
+
 		# Deal with the possibility of a '/' parameter
 		if s[0] and s[0][0] == '/':
 			if len(s) > 1:
 				s = s[1:]
 			else:
 				return
-		
+
 		if len(s) == 1:
 			return filter(lambda x:x.lower().startswith(s[0].lower()), self.peripheral_list() +
 			   ['help'])
-	
+
 		if len(s) == 2:
 			reg = s[1].upper()
 			if len(reg) and reg[0] == '&':
 				reg = reg[1:]
 			filt = filter(lambda x:x.startswith(reg), self.register_list(s[0].upper()))
 			return filt
-	
+
 	def read(self, address, bits = 32):
 		""" Read from memory and return an integer
 		"""
 		value = gdb.selected_inferior().read_memory(address, bits/8)
-		return struct.unpack_from("<i", value)[0]
+		unpack_format = "i"
+		if bits in BITS_TO_UNPACK_FORMAT:
+			unpack_format = BITS_TO_UNPACK_FORMAT[bits]
+		#gdb.write("{:x} {}\n".format(address, binascii.hexlify(value)))
+		return struct.unpack_from("<" + unpack_format, value)[0]
 
 	def write(self, address, data, bits = 32):
 		""" Write data to memory
@@ -282,7 +334,7 @@ class SVD(gdb.Command):
 		except AttributeError:
 			keys = elf.svd_file.peripherals.keys()
 		return list(keys)
-	
+
 	def register_list(self, peripheral):
 		try:
 			try:
@@ -293,7 +345,7 @@ class SVD(gdb.Command):
 		except:
 			gdb.write("Peripheral {} doesn't exist\n".format(peripheral))
 			return []
-	
+
 	def field_list(self, peripheral, register):
 		try:
 			periph = svd_file.peripherals[peripheral]
@@ -306,4 +358,3 @@ class SVD(gdb.Command):
 		except:
 			gdb.write("Register {} doesn't exist on {}\n".format(register, peripheral))
 			return []
-
