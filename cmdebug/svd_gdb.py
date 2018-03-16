@@ -221,7 +221,6 @@ class SVD(gdb.Command):
 			else:
 				container = " ".join(s[:3])
 				cluster = peripheral.clusters[s[1]]
-				gdb.write(repr(cluster))
 				self._print_register_fields(container, form, cluster.registers[s[2]])
 			return
 
