@@ -111,13 +111,20 @@ class SVD(gdb.Command):
 		except AttributeError:
 			fields_iter = fields.values()
 		for f in fields_iter:
+			desc = re.sub(r'\s+', ' ', f.description)
 			if register.readable():
 				val = data >> f.offset
 				val &= (1 << f.width) - 1
-				val = self.format(val, form, f.width)
+				if f.enum:
+					if val in f.enum:
+						desc = f.enum[val][1] + " - " + desc
+						val = f.enum[val][0]
+					else:
+						val = "Invalid enum value: " + self.format(val, form, f.width)
+				else:
+					val = self.format(val, form, f.width)
 			else:
 				val = "(not readable)"
-			desc = re.sub(r'\s+', ' ', f.description)
 			fieldList.append((f.name, val, desc))
 
 		column1Width = max(len(field[0]) for field in fieldList) + 2 # padding

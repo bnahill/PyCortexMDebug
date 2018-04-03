@@ -32,6 +32,28 @@ class SVDFile:
 		for p in periph:
 			self.peripherals[str(p.name)] = SVDPeripheral(p, self)
 
+def add_register(parent, node):
+	if hasattr(node, "dim"):
+		dim = node.dim
+		# dimension is not used, number of split indexes should be same
+		incr = int(str(node.dimIncrement), 0)
+		default_dim_index = ",".join((str(i) for i in range(dim)))
+		dim_index = getattr(node, "dimIndex", default_dim_index)
+		indexes = dim_index.split(',')
+		offset = 0
+		for i in indexes:
+			name = str(node.name) % i;
+			reg = SVDPeripheralRegister(node, parent)
+			reg.name = name
+			reg.offset += offset
+			parent.registers[name] = reg
+			offset += incr
+	else:
+		try:
+			parent.registers[str(node.name)] = SVDPeripheralRegister(node, parent)
+		except:
+			pass
+
 class SVDRegisterCluster:
 	def __init__(self, svd_elem, parent):
 		self.parent = parent
@@ -45,25 +67,7 @@ class SVDRegisterCluster:
 		self.clusters = OrderedDict()
 		for r in children:
 			if r.tag == "register":
-				try:
-					dim = r.dim
-					# dimension is not used, number of split indexes should be same
-					incr = int(str(r.dimIncrement), 0)
-					indexes = str(r.dimIndex).split(',')
-				except:
-					try:
-						self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
-					except:
-						pass
-					continue
-				offset = 0
-				for i in indexes:
-					name = str(r.name) % i;
-					reg = SVDPeripheralRegister(r, self)
-					reg.name = name
-					reg.offset += offset
-					self.registers[name] = reg
-					offset += incr
+				add_register(self, r)
 
 	def refactor_parent(self, parent):
 		self.parent = parent
@@ -106,25 +110,7 @@ class SVDPeripheral:
 				if r.tag == "cluster":
 					self.clusters[str(r.name)] = SVDRegisterCluster(r, self)
 				else:
-					try:
-						dim = r.dim
-						# dimension is not used, number of split indexes should be same
-						incr = int(str(r.dimIncrement), 0)
-						indexes = str(r.dimIndex).split(',')
-					except:
-						try:
-							self.registers[str(r.name)] = SVDPeripheralRegister(r, self)
-						except:
-							pass
-						continue
-					offset = 0
-					for i in indexes:
-						name = str(r.name) % i;
-						reg = SVDPeripheralRegister(r, self)
-						reg.name = name
-						reg.offset += offset
-						self.registers[name] = reg
-						offset += incr
+					add_register(self, r)
 
 	def refactor_parent(self, parent):
 		self.parent = parent
@@ -155,16 +141,10 @@ class SVDPeripheralRegister:
 		except:
 			self.size = 0x20
 		self.fields = OrderedDict()
-		try:
+		if hasattr(svd_elem, "fields"):
 			fields = svd_elem.fields.getchildren()
 			for f in fields:
 				self.fields[str(f.name)] = SVDPeripheralRegisterField(f, self)
-		except AttributeError:
-		        if fields:
-                                raise
-		        else:
-                                # if node has no field, skip
-                                pass
 
 	def refactor_parent(self, parent):
 		self.parent = parent
@@ -191,10 +171,8 @@ class SVDPeripheralRegisterField:
 	def __init__(self, svd_elem, parent):
 		self.parent = parent
 		self.name = str(svd_elem.name)
-		try:
-			self.description = str(svd_elem.description)
-		except AttributeError:
-			self.description = ''
+		self.description = str(getattr(svd_elem, "description", ""))
+
 		try:
 			self.offset = int(str(svd_elem.bitOffset))
 			self.width = int(str(svd_elem.bitWidth))
@@ -208,10 +186,14 @@ class SVDPeripheralRegisterField:
 				msb = int(str(svd_elem.msb))
 				self.offset = lsb
 				self.width = 1 + msb - lsb
-		try:
-			self.access = str(svd_elem.access)
-		except AttributeError:
-			self.access = parent.access
+		self.access = str(getattr(svd_elem, "access", parent.access))
+		self.enum = {}
+
+		if hasattr(svd_elem, "enumeratedValues"):
+			for v in svd_elem.enumeratedValues.getchildren():
+				if v.tag == "name":
+					continue
+				self.enum[int(str(v.value), 0)] = (str(v.name), str(v.description))
 
 	def refactor_parent(self, parent):
 		self.parent = parent
