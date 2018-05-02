@@ -21,6 +21,20 @@ import sys
 from copy import deepcopy
 from collections import OrderedDict
 import os
+import traceback
+
+class SVDNonFatalError(Exception):
+	""" Exception class for non-fatal errors
+	So far, these have related to quirks in some vendor SVD files which are reasonable to ignore
+	"""
+	def __init__(self, m):
+		self.m = m
+		self.exc_info = sys.exc_info()
+	
+	def __str__(self):
+		s = "Non-fatal: {}".format(self.m)
+		s += "\n" + str("".join(traceback.format_exc())).strip()
+		return s
 
 class SVDFile:
 	def __init__(self, fname):
@@ -30,15 +44,18 @@ class SVDFile:
 		self.peripherals = OrderedDict()
 		# XML elements
 		for p in periph:
-			self.peripherals[str(p.name)] = SVDPeripheral(p, self)
+			try:
+				self.peripherals[str(p.name)] = SVDPeripheral(p, self)
+			except SVDNonFatalError as e:
+				print(e)
 
 def add_register(parent, node):
 	if hasattr(node, "dim"):
-		dim = node.dim
+		dim = int(node.dim)
 		# dimension is not used, number of split indexes should be same
 		incr = int(str(node.dimIncrement), 0)
 		default_dim_index = ",".join((str(i) for i in range(dim)))
-		dim_index = getattr(node, "dimIndex", default_dim_index)
+		dim_index = str(getattr(node, "dimIndex", default_dim_index))
 		indexes = dim_index.split(',')
 		offset = 0
 		for i in indexes:
@@ -85,6 +102,8 @@ class SVDRegisterCluster:
 class SVDPeripheral:
 	def __init__(self, svd_elem, parent):
 		self.parent = parent
+		if not hasattr(svd_elem, "baseAddress"):
+			raise SVDNonFatalError("Periph without base address")
 		self.base_address = int(str(svd_elem.baseAddress), 0)
 		if 'derivedFrom' in svd_elem.attrib:
 			derived_from = svd_elem.attrib['derivedFrom']
@@ -120,8 +139,12 @@ class SVDPeripheral:
 			values = self.registers.values()
 		for r in values:
 			r.refactor_parent(self)
-		for c in self.clusters.itervalues():
-			c.refactor_parent(self)
+		try:
+			for c in self.clusters.itervalues():
+				c.refactor_parent(self)
+		except AttributeError:
+			for c in self.clusters.values():
+				c.refactor_parent(self)
 
 	def __unicode__(self):
 		return str(self.name)
@@ -193,7 +216,9 @@ class SVDPeripheralRegisterField:
 			for v in svd_elem.enumeratedValues.getchildren():
 				if v.tag == "name":
 					continue
-				self.enum[int(str(v.value), 0)] = (str(v.name), str(v.description))
+				# Some Kinetis parts have values with # instead of 0x...
+				value = str(v.value).replace("#","0x")
+				self.enum[int(value, 0)] = (str(v.name), str(v.description))
 
 	def refactor_parent(self, parent):
 		self.parent = parent
@@ -208,6 +233,12 @@ class SVDPeripheralRegisterField:
 		return str(self.name)
 
 if __name__ == '__main__':
-	svd = SVDFile(sys.argv[1])
-	print(svd.peripherals['SERCOM0'].registers)
-	print(svd.peripherals['SERCOM0'].clusters["SPI"])
+	for f in sys.argv[1:]:
+		print("Testing file: {}".format(f))
+		svd = SVDFile(f)
+		print(svd.peripherals)
+		key = list(svd.peripherals)[0]
+		print("Registers in peripheral '{}':".format(key))
+		print(svd.peripherals[key].registers)
+		print("Done testing file: {}".format(f))
+
