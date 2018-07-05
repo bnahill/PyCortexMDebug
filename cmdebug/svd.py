@@ -30,7 +30,7 @@ class SVDNonFatalError(Exception):
 	def __init__(self, m):
 		self.m = m
 		self.exc_info = sys.exc_info()
-	
+
 	def __str__(self):
 		s = "Non-fatal: {}".format(self.m)
 		s += "\n" + str("".join(traceback.format_exc())).strip()
@@ -51,7 +51,7 @@ class SVDFile:
 
 def add_register(parent, node):
 	if hasattr(node, "dim"):
-		dim = int(node.dim)
+		dim = int(str(node.dim), 0)
 		# dimension is not used, number of split indexes should be same
 		incr = int(str(node.dimIncrement), 0)
 		default_dim_index = ",".join((str(i) for i in range(dim)))
@@ -241,4 +241,3 @@ if __name__ == '__main__':
 		print("Registers in peripheral '{}':".format(key))
 		print(svd.peripherals[key].registers)
 		print("Done testing file: {}".format(f))
-
