@@ -22,6 +22,7 @@ import re
 import math
 import sys
 import struct
+import pkg_resources
 sys.path.append('.')
 from cmdebug.svd import SVDFile
 
@@ -38,19 +39,54 @@ class LoadSVD(gdb.Command):
 	that object
 	"""
 	def __init__(self):
-		gdb.Command.__init__(self, "svd_load", gdb.COMMAND_DATA,
-		   gdb.COMPLETE_FILENAME)
+		self.vendors = {}
+		try:
+			vendor_names = pkg_resources.resource_listdir("cmsis_svd", "data")
+			for vendor in vendor_names:
+				fnames = pkg_resources.resource_listdir("cmsis_svd", "data/{}".format(vendor))
+				self.vendors[vendor] = [fname for fname in fnames if fname.lower().endswith(".svd")]
+		except:
+			pass
+
+		if (len(self.vendors) > 0):
+			gdb.Command.__init__(self, "svd_load", gdb.COMMAND_USER)
+		else:
+			gdb.Command.__init__(self, "svd_load", gdb.COMMAND_DATA, gdb.COMPLETE_FILENAME)
+
+	def complete(self, text, word):
+		args = gdb.string_to_argv(text)
+		num_args = len(args)
+		if text.endswith(" "):
+			num_args += 1
+		if not text:
+			num_args = 1
+
+		# "svd_load <tab>" or "svd_load ST<tab>"
+		if num_args == 1:
+			prefix = word.lower()
+			return [vendor for vendor in self.vendors if vendor.lower().startswith(prefix)]
+		# "svd_load STMicro<tab>" or "svd_load STMicro STM32F1<tab>"
+		elif num_args == 2 and args[0] in self.vendors:
+			prefix = word.lower()
+			filenames = self.vendors[args[0]]
+			return [fname for fname in filenames if fname.lower().startswith(prefix)]
+		return gdb.COMPLETE_NONE
 
 	def invoke(self, args, from_tty):
+		args = gdb.string_to_argv(args)
+		argc = len(args)
+		if argc == 1:
+			gdb.write("Loading SVD file {}...\n".format(args[0]))
+			f = args[0]
+		elif argc == 2:
+			gdb.write("Loading SVD file {}/{}...\n".format(args[0], args[1]))
+			f = pkg_resources.resource_filename("cmsis_svd", "data/{}/{}".format(args[0], args[1]))
+		else:
+			raise gdb.GdbError("Usage: svd_load <vendor> <device.svd> or svd_load <path/to/filename.svd>\n")
 		try:
-			f = str(args).split(" ")[0]
-			gdb.write("Loading SVD file {}...\n".format(f))
-		except:
-			gdb.write("Please provide a filename (svd_load [filename])\n")
-			return
-		svd_file = SVDFile(f)
-		SVD(svd_file)
-		gdb.write("Done!\n")
+			SVD(SVDFile(f))
+		except Exception as e:
+			raise gdb.GdbError("Could not load SVD file {} : {}...\n".format(f, e))
 
 if __name__ == "__main__":
 	# This will also get executed by GDB
