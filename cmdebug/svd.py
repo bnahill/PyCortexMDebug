@@ -201,7 +201,7 @@ class SVDPeripheralRegisterField:
 			self.width = int(str(svd_elem.bitWidth))
 		except:
 			try:
-				bitrange = map(int, str(svd_elem.bitRange).strip()[1:-1].split(":"))
+				bitrange = list(map(int, str(svd_elem.bitRange).strip()[1:-1].split(":")))
 				self.offset = bitrange[1]
 				self.width = 1 + bitrange[0] - bitrange[1]
 			except:
