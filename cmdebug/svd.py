@@ -71,6 +71,29 @@ def add_register(parent, node):
 		except:
 			pass
 
+def add_cluster(parent, node):
+	if hasattr(node, "dim"):
+		dim = int(str(node.dim), 0)
+		# dimension is not used, number of split indexes should be same
+		incr = int(str(node.dimIncrement), 0)
+		default_dim_index = ",".join((str(i) for i in range(dim)))
+		dim_index = str(getattr(node, "dimIndex", default_dim_index))
+		indexes = dim_index.split(',')
+		offset = 0
+		for i in indexes:
+			name = str(node.name) % i;
+			cluster = SVDRegisterCluster(node, parent)
+			cluster.name = name
+			cluster.address_offset += offset
+			cluster.base_address += offset
+			parent.clusters[name] = cluster
+			offset += incr
+	else:
+		try:
+			parent.clusters[str(r.name)] = SVDRegisterCluster(node, parent)
+		except:
+			pass
+
 class SVDRegisterCluster:
 	def __init__(self, svd_elem, parent):
 		self.parent = parent
@@ -127,7 +150,7 @@ class SVDPeripheral:
 			self.clusters = OrderedDict()
 			for r in registers:
 				if r.tag == "cluster":
-					self.clusters[str(r.name)] = SVDRegisterCluster(r, self)
+					add_cluster(self, r)
 				else:
 					add_register(self, r)
 
