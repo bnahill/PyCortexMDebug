@@ -28,9 +28,9 @@ from cmdebug.svd import SVDFile
 #from svd_test import *
 
 BITS_TO_UNPACK_FORMAT = {
-	8: "b",
-	16: "h",
-	32: "i",
+	8: "B",
+	16: "H",
+	32: "I",
 }
 
 class LoadSVD(gdb.Command):
@@ -296,7 +296,7 @@ class SVD(gdb.Command):
 		""" Read from memory and return an integer
 		"""
 		value = gdb.selected_inferior().read_memory(address, bits/8)
-		unpack_format = "i"
+		unpack_format = "I"
 		if bits in BITS_TO_UNPACK_FORMAT:
 			unpack_format = BITS_TO_UNPACK_FORMAT[bits]
 		#gdb.write("{:x} {}\n".format(address, binascii.hexlify(value)))
