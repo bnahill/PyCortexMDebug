@@ -90,9 +90,9 @@ def add_cluster(parent, node):
 			offset += incr
 	else:
 		try:
-			parent.clusters[str(r.name)] = SVDRegisterCluster(node, parent)
-		except:
-			pass
+			parent.clusters[str(node.name)] = SVDRegisterCluster(node, parent)
+		except SVDNonFatalError as e:
+			print(e)
 
 class SVDRegisterCluster:
 	def __init__(self, svd_elem, parent):
