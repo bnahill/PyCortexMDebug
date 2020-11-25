@@ -22,6 +22,52 @@ from copy import deepcopy
 from collections import OrderedDict
 import os
 import traceback
+import warnings
+
+
+class CaseInsensitiveOrderedDict():
+    def __init__(self):
+        self.od = OrderedDict()
+        self.casemap = {}
+
+    def __getitem__(self, key):
+        if key in self.od:
+            return self.od[key]
+        return self.od[self.casemap[key.lower()]]
+
+    def __setitem__(self, key, value):
+        if key in self.od:
+            warnings.warn('Duplicate entry {key}')
+        elif key.lower() in self.casemap:
+            warnings.warn('Entry {key} differs from duplicate {self.casemap[key.lower()]} only in cAsE')
+
+        self.casemap[key.lower()] = key
+        self.od[key] = value
+
+    def __delitem__(self, key):
+        if self.casemap[key.lower()] == key: # Check that we did not overwrite this entry
+            del self.casemap[key.lower()]
+        del self.od[key]
+
+    def __contains__(self, key):
+        return key in self.od or key.lower() in self.casemap
+
+    def __iter__(self):
+        return iter(self.od)
+
+    def __len__(self):
+        return len(self.od)
+
+    def items(self):
+        return self.od.items()
+
+    def keys(self):
+        return self.od.keys()
+
+    def values(self):
+        return self.od.values()
+
+
 
 class SVDNonFatalError(Exception):
 	""" Exception class for non-fatal errors
@@ -41,7 +87,7 @@ class SVDFile:
 		f = objectify.parse(os.path.expanduser(fname))
 		root = f.getroot()
 		periph = root.peripherals.getchildren()
-		self.peripherals = OrderedDict()
+		self.peripherals = CaseInsensitiveOrderedDict()
 		# XML elements
 		for p in periph:
 			try:
@@ -103,8 +149,8 @@ class SVDRegisterCluster:
 		children = svd_elem.getchildren()
 		self.description = str(svd_elem.description)
 		self.name = str(svd_elem.name)
-		self.registers = OrderedDict()
-		self.clusters = OrderedDict()
+		self.registers = CaseInsensitiveOrderedDict()
+		self.clusters = CaseInsensitiveOrderedDict()
 		for r in children:
 			if r.tag == "register":
 				add_register(self, r)
@@ -146,8 +192,8 @@ class SVDPeripheral:
 			registers = svd_elem.registers.getchildren()
 			self.description = str(svd_elem.description)
 			self.name = str(svd_elem.name)
-			self.registers = OrderedDict()
-			self.clusters = OrderedDict()
+			self.registers = CaseInsensitiveOrderedDict()
+			self.clusters = CaseInsensitiveOrderedDict()
 			for r in registers:
 				if r.tag == "cluster":
 					add_cluster(self, r)
@@ -186,7 +232,7 @@ class SVDPeripheralRegister:
 			self.size = int(str(svd_elem.size),0)
 		except:
 			self.size = 0x20
-		self.fields = OrderedDict()
+		self.fields = CaseInsensitiveOrderedDict()
 		if hasattr(svd_elem, "fields"):
 			fields = svd_elem.fields.getchildren()
 			for f in fields:
