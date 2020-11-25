@@ -40,12 +40,15 @@ class SmartDict():
 
         return self.od[self.prefix_match(key)]
 
-    def prefix_match(self, key):
+    def prefix_match_iter(self, key):
         name, number = re.match('^(.*?)([0-9]*)$', key.lower()).groups()
         for entry, od_key in self.casemap.items():
             if entry.startswith(name) and entry.endswith(number):
-                return od_key
+                yield od_key
 
+    def prefix_match(self, key):
+        for od_key in self.prefix_match_iter(key):
+            return od_key
         return None
 
     def __setitem__(self, key, value):

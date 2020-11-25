@@ -224,7 +224,7 @@ class SVD(gdb.Command):
 			peripheral = self.svd_file.peripherals[peripheral_name]
 
 		if len(s) == 1:
-			self._print_registers(s[0], form, peripheral.registers)
+			self._print_registers(peripheral.name, form, peripheral.registers)
 			if len(peripheral.clusters) > 0:
 				try:
 					clusters_iter = peripheral.clusters.itervalues()
@@ -247,40 +247,56 @@ class SVD(gdb.Command):
 
 		cluster = None
 		if len(s) == 2:
-			container = " ".join(s[:2])
 			if s[1] in peripheral.clusters:
-				self._print_registers(container, form, peripheral.clusters[s[1]].registers)
+				cluster = peripheral.clusters[s[1]]
+				container = cluster.parent.name + ' > ' + cluster.name
+				self._print_registers(container, form, cluster.registers)
+
 			elif s[1] in peripheral.registers:
-				self._print_register_fields(container, form, self.svd_file.peripherals[s[0]].registers[s[1]])
+				register = peripheral.registers[s[1]]
+				container = peripheral.name + ' > ' + register.name
+				self._print_register_fields(container, form, register)
+
 			else:
-				gdb.write("Register/cluster {} in peripheral {} does not exist!\n".format(s[1], s[0]))
+				gdb.write("Register/cluster {} in peripheral {} does not exist!\n".format(
+				    s[1], peripheral.name))
 			return
 
 		if len(s) == 3:
 			if s[1] not in peripheral.clusters:
-				gdb.write("Cluster {} in peripheral {} does not exist!\n".format(s[1], s[0]))
-			elif s[2] not in peripheral.clusters[s[1]].registers:
-				gdb.write("Register {} in cluster {} in peripheral {} does not exist!\n".format(s[2], s[1], s[0]))
-			else:
-				container = " ".join(s[:3])
-				cluster = peripheral.clusters[s[1]]
-				self._print_register_fields(container, form, cluster.registers[s[2]])
+				gdb.write("Cluster {} in peripheral {} does not exist!\n".format(
+				    s[1], peripheral.name))
+				return
+
+			cluster = peripheral.clusters[s[1]]
+			if s[2] not in cluster.registers:
+				gdb.write("Register {} in cluster {} in peripheral {} does not exist!\n".format(
+				    s[2], cluster.name, peripheral.name))
+				return
+
+			register = cluster.registers[s[2]]
+			container = ' > '.join([peripheral.name, cluster.name, register.name])
+			self._print_register_fields(container, form, register)
 			return
 
 		if len(s) == 4:
-			try:
-				reg = self.svd_file.peripherals[s[0]].registers[s[1]]
-			except KeyError:
-				gdb.write("Register {} in peripheral {} does not exist!\n".format(s[1], s[0]))
-				return
-			try:
-				field = reg.fields[s[2]]
-			except KeyError:
-				gdb.write("Field {} in register {} in peripheral {} does not exist!\n".format(s[2], s[1], s[0]))
+			if s[1] not in peripheral.registers:
+				gdb.write("Register {} in peripheral {} does not exist!\n".format(
+				    s[1], peripheral.name))
 				return
 
+			reg = peripheral.registers[s[1]]
+
+			if s[2] not in reg.fields:
+				gdb.write("Field {} in register {} in peripheral {} does not exist!\n".format(
+				    s[2], reg.name, peripheral.name))
+				return
+
+			field = reg.fields[s[2]]
+
 			if not field.writable() or not reg.writable():
-				gdb.write("Field {} in register {} in peripheral {} is read-only!\n".format(s[2], s[1], s[0]))
+				gdb.write("Field {} in register {} in peripheral {} is read-only!\n".format(
+				    field.name, register.name, peripheral.name))
 				return
 
 			try:
@@ -318,15 +334,20 @@ class SVD(gdb.Command):
 				return
 
 		if len(s) == 1:
-			return filter(lambda x:x.lower().startswith(s[0].lower()), self.peripheral_list() +
-			   ['help'])
+			return list(self.svd_file.peripherals.prefix_match_iter(s[0]))
 
 		if len(s) == 2:
 			reg = s[1].upper()
 			if len(reg) and reg[0] == '&':
 				reg = reg[1:]
-			filt = filter(lambda x:x.startswith(reg), self.register_list(s[0].upper()))
-			return filt
+			
+			if s[0] not in self.svd_file.peripherals:
+			    return
+
+			per = self.svd_file.peripherals[s[0]]
+			return list(per.registers.prefix_match_iter(s[1]))
+
+		return []
 
 	def read(self, address, bits = 32):
 		""" Read from memory and return an integer
@@ -374,7 +395,7 @@ class SVD(gdb.Command):
 		try:
 			keys = self.svd_file.peripherals.iterkeys()
 		except AttributeError:
-			keys = elf.svd_file.peripherals.keys()
+			keys = self.svd_file.peripherals.keys()
 		return list(keys)
 
 	def register_list(self, peripheral):
