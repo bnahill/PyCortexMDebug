@@ -196,6 +196,8 @@ class SVD(gdb.Command):
 			gdb.write("svd/[format_character] ...\n")
 			gdb.write("\tFormat values using that character\n")
 			gdb.write("\td(default):decimal, x: hex, o: octal, b: binary\n")
+			gdb.write("\n")
+			gdb.write("Both prefix matching and case-insensitive matching is supported for peripherals, registers, clusters and fields.\n")
 			return
 
 		if not len(s[0]):
@@ -214,12 +216,19 @@ class SVD(gdb.Command):
 				gdb.write("\t{}:{}{}\n".format(p.name, "".ljust(columnWidth - len(p.name)) , desc))
 			return
 
+		def warn_if_ambiguous(smart_dict, key):
+			if smart_dict.is_ambiguous(key):
+			    gdb.write('Warning: {} could prefix match any of: {}\n'.format(
+
+		key, ', '.join(smart_dict.prefix_match_iter(key))))
 		registers = None
 		if len(s) >= 1:
 			peripheral_name = s[0]
 			if peripheral_name not in self.svd_file.peripherals:
 				gdb.write("Peripheral {} does not exist!\n".format(s[0]))
 				return
+
+			warn_if_ambiguous(self.svd_file.peripherals, peripheral_name)
 
 			peripheral = self.svd_file.peripherals[peripheral_name]
 
@@ -230,7 +239,7 @@ class SVD(gdb.Command):
 					clusters_iter = peripheral.clusters.itervalues()
 				except AttributeError:
 					clusters_iter = peripheral.clusters.values()
-				gdb.write("Clusters in %s:\n" % peripheral_name)
+				gdb.write("Clusters in %s:\n" % peripheral.name)
 				regList = []
 				for r in clusters_iter:
 					desc = re.sub(r'\s+', ' ', r.description)
@@ -248,13 +257,16 @@ class SVD(gdb.Command):
 		cluster = None
 		if len(s) == 2:
 			if s[1] in peripheral.clusters:
+				warn_if_ambiguous(peripheral.clusters, s[1])
 				cluster = peripheral.clusters[s[1]]
 				container = cluster.parent.name + ' > ' + cluster.name
 				self._print_registers(container, form, cluster.registers)
 
 			elif s[1] in peripheral.registers:
+				warn_if_ambiguous(peripheral.registers, s[1])
 				register = peripheral.registers[s[1]]
 				container = peripheral.name + ' > ' + register.name
+
 				self._print_register_fields(container, form, register)
 
 			else:
@@ -267,12 +279,14 @@ class SVD(gdb.Command):
 				gdb.write("Cluster {} in peripheral {} does not exist!\n".format(
 				    s[1], peripheral.name))
 				return
+			warn_if_ambiguous(peripheral.clusters, s[1])
 
 			cluster = peripheral.clusters[s[1]]
 			if s[2] not in cluster.registers:
 				gdb.write("Register {} in cluster {} in peripheral {} does not exist!\n".format(
 				    s[2], cluster.name, peripheral.name))
 				return
+			warn_if_ambiguous(cluster.registers, s[2])
 
 			register = cluster.registers[s[2]]
 			container = ' > '.join([peripheral.name, cluster.name, register.name])
@@ -284,6 +298,7 @@ class SVD(gdb.Command):
 				gdb.write("Register {} in peripheral {} does not exist!\n".format(
 				    s[1], peripheral.name))
 				return
+			warn_if_ambiguous(peripheral.registers, s[1])
 
 			reg = peripheral.registers[s[1]]
 
@@ -291,6 +306,7 @@ class SVD(gdb.Command):
 				gdb.write("Field {} in register {} in peripheral {} does not exist!\n".format(
 				    s[2], reg.name, peripheral.name))
 				return
+			warn_if_ambiguous(reg.fields, s[2])
 
 			field = reg.fields[s[2]]
 

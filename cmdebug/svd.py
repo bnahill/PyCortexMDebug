@@ -40,6 +40,9 @@ class SmartDict():
 
         return self.od[self.prefix_match(key)]
 
+    def is_ambiguous(self, key):
+        return key not in self.od and key not in self.casemap and len(list(self.prefix_match_iter(key))) > 1
+
     def prefix_match_iter(self, key):
         name, number = re.match('^(.*?)([0-9]*)$', key.lower()).groups()
         for entry, od_key in self.casemap.items():
