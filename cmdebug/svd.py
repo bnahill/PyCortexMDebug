@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 This file is part of PyCortexMDebug
 
@@ -18,9 +19,9 @@ along with PyCortexMDebug.  If not, see <http://www.gnu.org/licenses/>.
 
 import lxml.objectify as objectify
 import sys
-from copy import deepcopy
 from collections import OrderedDict
 import os
+import pickle
 import traceback
 import re
 import warnings
@@ -203,8 +204,12 @@ class SVDPeripheral:
 				self.description = str(svd_elem.description)
 			except:
 				self.description = parent.peripherals[derived_from].description
-			self.registers = deepcopy(parent.peripherals[derived_from].registers)
-			self.clusters = deepcopy(parent.peripherals[derived_from].clusters)
+
+			# pickle is faster than deepcopy by up to 50% on svd files with a
+			# lot of derivedFrom definitions
+			copier = lambda a: pickle.loads(pickle.dumps(a))
+			self.registers = copier(parent.peripherals[derived_from].registers)
+			self.clusters = copier(parent.peripherals[derived_from].clusters)
 			self.refactor_parent(parent)
 		else:
 			# This doesn't inherit registers from anything
