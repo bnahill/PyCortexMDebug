@@ -169,7 +169,7 @@ class SVD(gdb.Command):
 			gdb.write("\t{}:{}{}".format(field[0], "".ljust(column1Width - len(field[0])), field[1].rjust(column2Width)))
 			if field[2] != field[0]:
 				gdb.write("  {}".format(field[2]))
-			gdb.write("\n");
+			gdb.write("\n")
 
 	def invoke(self, args, from_tty):
 		s = str(args).split(" ")
@@ -356,7 +356,7 @@ class SVD(gdb.Command):
 			reg = s[1].upper()
 			if len(reg) and reg[0] == '&':
 				reg = reg[1:]
-			
+
 			if s[0] not in self.svd_file.peripherals:
 			    return
 

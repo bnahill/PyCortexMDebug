@@ -124,7 +124,7 @@ def add_register(parent, node):
 		indexes = dim_index.split(',')
 		offset = 0
 		for i in indexes:
-			name = str(node.name) % i;
+			name = str(node.name) % i
 			reg = SVDPeripheralRegister(node, parent)
 			reg.name = name
 			reg.offset += offset
@@ -146,7 +146,7 @@ def add_cluster(parent, node):
 		indexes = dim_index.split(',')
 		offset = 0
 		for i in indexes:
-			name = str(node.name) % i;
+			name = str(node.name) % i
 			cluster = SVDRegisterCluster(node, parent)
 			cluster.name = name
 			cluster.address_offset += offset
