@@ -108,6 +108,7 @@ class SVDFile:
 		root = f.getroot()
 		periph = root.peripherals.getchildren()
 		self.peripherals = SmartDict()
+		self.base_address = 0
 		# XML elements
 		for p in periph:
 			try:
@@ -162,7 +163,8 @@ def add_cluster(parent, node):
 
 class SVDRegisterCluster:
 	def __init__(self, svd_elem, parent):
-		self.parent = parent
+		self.parent_base_address = parent.base_address
+		self.parent_name = parent.name
 		self.address_offset = int(str(svd_elem.addressOffset), 0)
 		self.base_address = self.address_offset + parent.base_address
 		# This doesn't inherit registers from anything
@@ -176,8 +178,9 @@ class SVDRegisterCluster:
 				add_register(self, r)
 
 	def refactor_parent(self, parent):
-		self.parent = parent
-		self.base_address = parent.base_address + self.address_offset
+		self.parent_base_address = parent.base_address
+		self.parent_name = parent.name
+		self.base_address = self.parent_base_address + self.address_offset
 		try:
 			values = self.registers.itervalues()
 		except AttributeError:
@@ -190,7 +193,7 @@ class SVDRegisterCluster:
 
 class SVDPeripheral:
 	def __init__(self, svd_elem, parent):
-		self.parent = parent
+		self.parent_base_address = parent.base_address
 		if not hasattr(svd_elem, "baseAddress"):
 			raise SVDNonFatalError("Periph without base address")
 		self.base_address = int(str(svd_elem.baseAddress), 0)
@@ -225,7 +228,7 @@ class SVDPeripheral:
 					add_register(self, r)
 
 	def refactor_parent(self, parent):
-		self.parent = parent
+		self.parent_base_address = parent.base_address
 		try:
 			values = self.registers.itervalues()
 		except AttributeError:
@@ -244,7 +247,7 @@ class SVDPeripheral:
 
 class SVDPeripheralRegister:
 	def __init__(self, svd_elem, parent):
-		self.parent = parent
+		self.parent_base_address = parent.base_address
 		self.name = str(svd_elem.name)
 		self.description = str(svd_elem.description)
 		self.offset = int(str(svd_elem.addressOffset),0)
@@ -263,16 +266,10 @@ class SVDPeripheralRegister:
 				self.fields[str(f.name)] = SVDPeripheralRegisterField(f, self)
 
 	def refactor_parent(self, parent):
-		self.parent = parent
-		try:
-			fields = self.fields.itervalues()
-		except AttributeError:
-			fields = self.fields.values()
-		for f in fields:
-			f.refactor_parent(self)
+		self.parent_base_address = parent.base_address
 
 	def address(self):
-		return self.parent.base_address + self.offset
+		return self.parent_base_address + self.offset
 
 	def readable(self):
 		return self.access in ["read-only", "read-write", "read-writeOnce"]
@@ -285,7 +282,6 @@ class SVDPeripheralRegister:
 
 class SVDPeripheralRegisterField:
 	def __init__(self, svd_elem, parent):
-		self.parent = parent
 		self.name = str(svd_elem.name)
 		self.description = str(getattr(svd_elem, "description", ""))
 
@@ -312,9 +308,6 @@ class SVDPeripheralRegisterField:
 				# Some Kinetis parts have values with # instead of 0x...
 				value = str(v.value).replace("#","0x")
 				self.enum[int(value, 0)] = (str(v.name), str(v.description))
-
-	def refactor_parent(self, parent):
-		self.parent = parent
 
 	def readable(self):
 		return self.access in ["read-only", "read-write", "read-writeOnce"]
