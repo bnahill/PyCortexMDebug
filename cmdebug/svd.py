@@ -217,16 +217,18 @@ class SVDPeripheral:
             self.refactor_parent(parent)
         else:
             # This doesn't inherit registers from anything
-            registers = svd_elem.registers.getchildren()
             self.description = str(svd_elem.description)
             self.name = str(svd_elem.name)
             self.registers = SmartDict()
             self.clusters = SmartDict()
-            for r in registers:
-                if r.tag == "cluster":
-                    add_cluster(self, r)
-                else:
-                    add_register(self, r)
+
+            if hasattr(svd_elem, "registers"):
+                registers = svd_elem.registers.getchildren()
+                for r in registers:
+                    if r.tag == "cluster":
+                        add_cluster(self, r)
+                    else:
+                        add_register(self, r)
 
     def refactor_parent(self, parent):
         self.parent = parent
