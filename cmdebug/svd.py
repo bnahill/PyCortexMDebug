@@ -417,7 +417,13 @@ class SVDPeripheralRegisterField:
                 # Some Kinetis parts have values with # instead of 0x...
                 value = str(v.value).replace("#", "0x")
                 description = str(v.description) if hasattr(v, "description") else ""
-                self.enum[int(value, 0)] = (str(v.name), description)
+                try:
+                    index = int(value, 0)
+                    self.enum[int(value, 0)] = (str(v.name), description)
+                except ValueError:
+                    # If the value couldn't be converted as a single integer, skip it
+                    pass
+
 
     def refactor_parent(self, parent: SVDPeripheralRegister) -> None:
         self.parent = parent
