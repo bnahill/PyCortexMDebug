@@ -115,12 +115,15 @@ class SVD(gdb.Command):
 		regList = []
 		for r in regs_iter:
 			if r.readable():
-				data = self.read(r.address(), r.size)
-				data = self.format(data, form, r.size)
-				if form == 'a':
-					data += " <" + re.sub(r'\s+', ' ',
-						gdb.execute("info symbol {}".format(data), True,
-						True).strip()) + ">"
+				try:
+					data = self.read(r.address(), r.size)
+					data = self.format(data, form, r.size)
+					if form == 'a':
+						data += " <" + re.sub(r'\s+', ' ',
+							gdb.execute("info symbol {}".format(data), True,
+							True).strip()) + ">"
+				except gdb.MemoryError:
+					data = "(error reading)"
 			else:
 				data = "(not readable)"
 			desc = re.sub(r'\s+', ' ', r.description)
