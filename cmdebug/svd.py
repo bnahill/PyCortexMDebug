@@ -120,6 +120,7 @@ class SVDFile:
     """
 
     peripherals: SmartDict
+    base_address: int
 
     def __init__(self, fname: str) -> None:
         """
@@ -131,6 +132,7 @@ class SVDFile:
         root = f.getroot()
         periph = root.peripherals.getchildren()
         self.peripherals = SmartDict()
+        self.base_address = 0
 
         # XML elements
         for p in periph:
@@ -213,7 +215,8 @@ class SVDRegisterCluster:
     Register cluster
     """
 
-    parent: "SVDPeripheral"
+    parent_base_address: int
+    parent_name: str
     address_offset: int
     base_address: int
     description: str
@@ -228,9 +231,10 @@ class SVDRegisterCluster:
             svd_elem: XML element for the register cluster
             parent: Parent SVDPeripheral object
         """
-        self.parent = parent
+        self.parent_base_address = parent.base_address
+        self.parent_name = parent.name
         self.address_offset = int(str(svd_elem.addressOffset), 0)
-        self.base_address = self.address_offset + parent.base_address
+        self.base_address = self.address_offset + self.parent_base_address
         # This doesn't inherit registers from anything
         children = svd_elem.getchildren()
         self.description = str(svd_elem.description)
@@ -241,9 +245,10 @@ class SVDRegisterCluster:
             if r.tag == "register":
                 add_register(self, r)
 
-    def refactor_parent(self, parent):
-        self.parent = parent
-        self.base_address = parent.base_address + self.address_offset
+    def refactor_parent(self, parent: "SVDPeripheral"):
+        self.parent_base_address = parent.base_address
+        self.parent_name = parent.name
+        self.base_address = self.parent_base_address + self.address_offset
         values = self.registers.values()
         for r in values:
             r.refactor_parent(self)
@@ -256,7 +261,7 @@ class SVDPeripheral:
     """
     This is a peripheral as defined in the SVD file
     """
-    parent: SVDFile
+    parent_base_address: int
     name: str
     description: str
 
@@ -267,9 +272,9 @@ class SVDPeripheral:
             svd_elem: XML element for the peripheral
             parent: Parent SVDFile object
         """
-        self.parent = parent
-        # Look for a base address, as it is required
+        self.parent_base_address = parent.base_address
 
+        # Look for a base address, as it is required
         if not hasattr(svd_elem, "baseAddress"):
             raise SVDNonFatalError(f"Periph without base address")
         self.base_address = int(str(svd_elem.baseAddress), 0)
@@ -308,7 +313,7 @@ class SVDPeripheral:
                         add_register(self, r)
 
     def refactor_parent(self, parent: SVDFile) -> None:
-        self.parent = parent
+        self.parent_base_address = parent.base_address
         values = self.registers.values()
         for r in values:
             r.refactor_parent(self)
@@ -325,7 +330,7 @@ class SVDPeripheralRegister:
     A register within a peripheral
     """
 
-    parent: SVDPeripheral
+    parent_base_address: int
     name: str
     description: str
     offset: int
@@ -334,7 +339,7 @@ class SVDPeripheralRegister:
     fields: SmartDict
 
     def __init__(self, svd_elem, parent: SVDPeripheral) -> None:
-        self.parent = parent
+        self.parent_base_address = parent.base_address
         self.name = str(svd_elem.name)
         self.description = str(svd_elem.description)
         self.offset = int(str(svd_elem.addressOffset), 0)
@@ -354,13 +359,10 @@ class SVDPeripheralRegister:
                 self.fields[str(f.name)] = SVDPeripheralRegisterField(f, self)
 
     def refactor_parent(self, parent: SVDPeripheral) -> None:
-        self.parent = parent
-        fields = self.fields.values()
-        for f in fields:
-            f.refactor_parent(self)
+        self.parent_base_address = parent.base_address
 
     def address(self) -> int:
-        return self.parent.base_address + self.offset
+        return self.parent_base_address + self.offset
 
     def readable(self) -> bool:
         return self.access in ["read-only", "read-write", "read-writeOnce"]
@@ -377,7 +379,6 @@ class SVDPeripheralRegisterField:
     Field within a register
     """
 
-    parent: SVDPeripheralRegister
     name: str
     description: str
     offset: int
@@ -386,7 +387,6 @@ class SVDPeripheralRegisterField:
     enum: Dict[int, Tuple[str, str]]
 
     def __init__(self, svd_elem, parent: SVDPeripheralRegister) -> None:
-        self.parent = parent
         self.name = str(svd_elem.name)
         self.description = str(getattr(svd_elem, "description", ""))
 
@@ -400,7 +400,7 @@ class SVDPeripheralRegisterField:
             self.width = 1 + bitrange[0] - bitrange[1]
         else:
             assert hasattr(svd_elem, "lsb") and hasattr(svd_elem, "msb"),\
-                f"Range not found for field {self.name} in register {self.parent}"
+                f"Range not found for field {self.name} in register {parent}"
             lsb = int(str(svd_elem.lsb))
             msb = int(str(svd_elem.msb))
             self.offset = lsb
@@ -423,10 +423,6 @@ class SVDPeripheralRegisterField:
                 except ValueError:
                     # If the value couldn't be converted as a single integer, skip it
                     pass
-
-
-    def refactor_parent(self, parent: SVDPeripheralRegister) -> None:
-        self.parent = parent
 
     def readable(self) -> bool:
         return self.access in ["read-only", "read-write", "read-writeOnce"]
