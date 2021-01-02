@@ -12,11 +12,10 @@ common description of peripherals, registers, and register fields. You
 can download SVD files for different manufacturers
 [here](http://www.arm.com/products/processors/cortex-m/cortex-microcontroller-software-interface-standard.php).
 
-My implementation so far has only tested STM32 chips but should hold for others. If others are like those from ST,
-expect plenty of errors in the file. Like GPIOA having a register named GPIOB_OSPEEDR and lots of 16-bit registers
-that are listed as 32!
+I originally tested primarily with ST parts, then Freescale for a while. Now many vendor parts have been tested, each with their own quirks.
+If you run into a file that doesn't parse right, either make an issue and ask for help or fix it and push a patch.
 
-The implementation consists of two components -- An lxml-based parser module (pysvd) and a GDB file (gdb_svd).
+The implementation consists of two components -- An lxml-based parser module (svd.py) and a GDB file (svd_gdb).
 I haven't yet worked out a perfect workflow for this, though it's quite easy to use when
 you already tend to have a GDB initialization file for starting up OpenOCD and the like.
 However your workflow works, just make sure to, in GDB:
@@ -50,13 +49,7 @@ Also, tab completion exists for nearly everything! When in doubt, run `svd help`
 
 ### TODO
 
-Enable writing to registers and individual fields
-
-### Bugs
-
-There are probably a few. All planning, writing, and testing of this was done in an afternoon. There may be
-some oddities in working with non-STM32 parts. I'll play with this when I start working with other
-controllers again. If something's giving you trouble, describe the problem and it shall be fixed.
+Update this with instructions that match what it can actually do now...
 
 ## DWT
 The ARM Data Watchpoint and Trace Unit (DWT) offers data watchpoints and a series of gated cycle counters. For now,
