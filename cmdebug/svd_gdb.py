@@ -270,7 +270,7 @@ class SVD(gdb.Command):
             if s[1] in peripheral.clusters:
                 warn_if_ambiguous(peripheral.clusters, s[1])
                 cluster = peripheral.clusters[s[1]]
-                container = cluster.parent.name + ' > ' + cluster.name
+                container = peripheral.name + ' > ' + cluster.name
                 self._print_registers(container, form, cluster.registers)
 
             elif s[1] in peripheral.registers:
