@@ -360,7 +360,7 @@ class SVD(gdb.Command):
             if len(s) > 1:
                 s = s[1:]
             else:
-                return
+                return [] # completion after e.g. "svd/x" but before trailing space
 
         if len(s) == 1:
             return list(self.svd_file.peripherals.prefix_match_iter(s[0]))
@@ -371,7 +371,7 @@ class SVD(gdb.Command):
                 reg = reg[1:]
 
             if s[0] not in self.svd_file.peripherals:
-                return
+                return []
 
             per = self.svd_file.peripherals[s[0]]
             return list(per.registers.prefix_match_iter(s[1]))
