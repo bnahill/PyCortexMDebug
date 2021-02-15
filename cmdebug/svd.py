@@ -412,7 +412,8 @@ class SVDPeripheralRegisterField:
         if hasattr(svd_elem, "enumeratedValues"):
             values = [v for v in svd_elem.enumeratedValues.getchildren() if v.tag == "enumeratedValue"]
             for v in values:
-                if v.tag == "name":
+                # Skip the "name" tag and any entries that don't have a value
+                if v.tag == "name" or not hasattr(v, "value"):
                     continue
                 # Some Kinetis parts have values with # instead of 0x...
                 value = str(v.value).replace("#", "0x")
