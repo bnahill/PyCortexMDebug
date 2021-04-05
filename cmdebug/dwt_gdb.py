@@ -153,3 +153,6 @@ class DWT(gdb.Command):
         gdb.write("\tDisplay the cycle count\n")
         gdb.write("\td(default):decimal, x: hex, o: octal, b: binary\n")
         return
+
+# Registers our class to GDB when sourced:
+DWT()
