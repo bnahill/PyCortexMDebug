@@ -153,5 +153,9 @@ class DWT(gdb.Command):
         gdb.write("\td(default):decimal, x: hex, o: octal, b: binary\n")
         return
 
-# Registers our class to GDB when sourced:
-DWT()
+if __name__ == "__main__":
+    # This will also get executed by GDB
+
+    # Registers our class to GDB when sourced:
+    # Create just the svd_load command
+    DWT()
