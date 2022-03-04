@@ -392,6 +392,10 @@ class SVD(gdb.Command):
     def write(address, data, bits=32):
         """ Write data to memory
         """
+        pack_format = "I"
+        if bits in BITS_TO_UNPACK_FORMAT:
+            pack_format = BITS_TO_UNPACK_FORMAT[bits]
+        data = struct.pack (pack_format, data)
         gdb.selected_inferior().write_memory(address, bytes(data), bits / 8)
 
     @staticmethod
