@@ -20,7 +20,7 @@ I haven't yet worked out a perfect workflow for this, though it's quite easy to 
 you already tend to have a GDB initialization file for starting up OpenOCD and the like.
 However your workflow works, just make sure to, in GDB:
 
-    source gdb_svd.py
+    source /path/to/gdb.py
     svd_load [your_svd_file].svd
 
 These files can be huge so it might take a second or two. Anyways, after that, you can do
