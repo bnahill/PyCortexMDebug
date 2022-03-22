@@ -18,6 +18,17 @@ You should have received a copy of the GNU General Public License
 along with PyCortexMDebug.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import os
+from pathlib import Path
+
+# If using the script directly from the source tree without installing
+# it, add parent dir in search path to find cmdebug module
+try:
+    script_path = Path(os.path.abspath(os.path.expanduser(__file__)))
+    if (script_path.parents[1] / 'cmdebug').is_dir():
+        sys.path.append(str(script_path.parents[1]))
+except:
+    pass
 
 from cmdebug.svd_gdb import LoadSVD
 from cmdebug.dwt_gdb import DWT
