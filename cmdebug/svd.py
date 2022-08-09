@@ -237,7 +237,7 @@ class SVDRegisterCluster:
         self.base_address = self.address_offset + self.parent_base_address
         # This doesn't inherit registers from anything
         children = svd_elem.getchildren()
-        self.description = str(svd_elem.description)
+        self.description = str(getattr(svd_elem, "description", ""))
         self.name = str(svd_elem.name)
         self.registers = SmartDict()
         self.clusters = SmartDict()
@@ -299,7 +299,7 @@ class SVDPeripheral:
             self.refactor_parent(parent)
         else:
             # This doesn't inherit registers from anything
-            self.description = str(svd_elem.description)
+            self.description = str(getattr(svd_elem, "description", ""))
             self.name = str(svd_elem.name)
             self.registers = SmartDict()
             self.clusters = SmartDict()
@@ -341,7 +341,7 @@ class SVDPeripheralRegister:
     def __init__(self, svd_elem, parent: SVDPeripheral) -> None:
         self.parent_base_address = parent.base_address
         self.name = str(svd_elem.name)
-        self.description = str(svd_elem.description)
+        self.description = str(getattr(svd_elem, "description", ""))
         self.offset = int(str(svd_elem.addressOffset), 0)
         if hasattr(svd_elem, "access"):
             self.access = str(svd_elem.access)
@@ -417,7 +417,7 @@ class SVDPeripheralRegisterField:
                     continue
                 # Some Kinetis parts have values with # instead of 0x...
                 value = str(v.value).replace("#", "0x")
-                description = str(v.description) if hasattr(v, "description") else ""
+                description = str(getattr(v, "description", ""))
                 try:
                     index = int(value, 0)
                     self.enum[int(value, 0)] = (str(v.name), description)
