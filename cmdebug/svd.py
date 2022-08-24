@@ -165,8 +165,13 @@ def add_register(parent: Union["SVDPeripheral", "SVDRegisterCluster"], node):
         offset = 0
         for i in indices:
             name = str(node.name) % i
+            try:
+                desc = str(node.description) % i
+            except TypeError:
+                desc = str(node.description)
             reg = SVDPeripheralRegister(node, parent)
             reg.name = name
+            reg.description = desc
             reg.offset += offset
             parent.registers[name] = reg
             offset += incr
