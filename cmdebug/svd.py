@@ -340,23 +340,43 @@ class SVDPeripheralRegister:
 
     def __init__(self, svd_elem, parent: SVDPeripheral) -> None:
         self.parent_base_address = parent.base_address
-        self.name = str(svd_elem.name)
-        self.description = str(getattr(svd_elem, "description", ""))
         self.offset = int(str(svd_elem.addressOffset), 0)
-        if hasattr(svd_elem, "access"):
-            self.access = str(svd_elem.access)
+        if 'derivedFrom' in svd_elem.attrib:
+            derived_from = svd_elem.attrib['derivedFrom']
+            try:
+                self.name = str(svd_elem.name)
+            except AttributeError:
+                self.name = parent.registers[derived_from].name
+            try:
+                self.description = str(svd_elem.description)
+            except AttributeError:
+                self.description = str(getattr(svd_elem, "description", ""))
+            try:
+                self.access = str(svd_elem.access)
+            except AttributeError:
+                self.access = str(getattr(svd_elem, "access", "read-write"))
+            try:
+                self.size = str(svd_elem.size)
+            except AttributeError:
+                self.size = getattr(svd_elem, "size", 0x20)
+
+            def copier(a: Any) -> Any:
+                return pickle.loads(pickle.dumps(a))
+
+            self.fields = copier(parent.registers[derived_from].fields)
+            self.refactor_parent(parent)
         else:
-            self.access = "read-write"
-        if hasattr(svd_elem, "size"):
-            self.size = int(str(svd_elem.size), 0)
-        else:
-            self.size = 0x20
-        self.fields = SmartDict()
-        if hasattr(svd_elem, "fields"):
-            # Filter fields to only consider those of tag "field"
-            fields = [f for f in svd_elem.fields.getchildren() if f.tag == "field"]
-            for f in fields:
-                self.fields[str(f.name)] = SVDPeripheralRegisterField(f, self)
+            self.description = str(getattr(svd_elem, "description", ""))
+            self.name = str(svd_elem.name)
+            self.access = str(getattr(svd_elem, "access", "read-write"))
+            self.size = getattr(svd_elem, "size", 0x20)
+
+            self.fields = SmartDict()
+            if hasattr(svd_elem, "fields"):
+                # Filter fields to only consider those of tag "field"
+                fields = [f for f in svd_elem.fields.getchildren() if f.tag == "field"]
+                for f in fields:
+                    self.fields[str(f.name)] = SVDPeripheralRegisterField(f, self)
 
     def refactor_parent(self, parent: SVDPeripheral) -> None:
         self.parent_base_address = parent.base_address
