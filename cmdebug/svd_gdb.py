@@ -22,8 +22,12 @@ import sys
 import struct
 import pkg_resources
 
+from typing import Tuple, List, Optional
+
 sys.path.append('.')
-from cmdebug.svd import SVDFile
+#from cmdebug.svd import SVDFile
+from cmsis_svd import parser as svd_parser, model as svd_model
+
 
 BITS_TO_UNPACK_FORMAT = {
     8: "B",
@@ -31,6 +35,9 @@ BITS_TO_UNPACK_FORMAT = {
     32: "I",
 }
 
+def _reg_address(reg: svd_model.SVDRegister) -> int:
+    assert reg.parent is not None and reg.parent._address_block is not None, f"Cannot get address for parentless register {reg.name}"
+    return reg.parent._address_block.address + reg.address_offset
 
 class LoadSVD(gdb.Command):
     """ A command to load an SVD file and to create the command for inspecting
@@ -84,7 +91,8 @@ class LoadSVD(gdb.Command):
         else:
             raise gdb.GdbError("Usage: svd_load <vendor> <device.svd> or svd_load <path/to/filename.svd>\n")
         try:
-            SVD(SVDFile(f))
+            svd = svd_parser.SVDParser.for_xml_file(path=f)
+            SVD(svd.get_device())
         except Exception as e:
             raise gdb.GdbError("Could not load SVD file {} : {}...\n".format(f, e))
 
@@ -103,9 +111,9 @@ class SVD(gdb.Command):
     in the GDB debug environment
     """
 
-    def __init__(self, svd_file):
+    def __init__(self, svd_device: svd_model.SVDDevice):
         gdb.Command.__init__(self, "svd", gdb.COMMAND_DATA)
-        self.svd_file = svd_file
+        self.svd_device = svd_device
 
     def _print_registers(self, container_name, form, registers):
         if len(registers) == 0:
@@ -210,46 +218,34 @@ class SVD(gdb.Command):
 
         if not len(s[0]):
             gdb.write("Available Peripherals:\n")
-            try:
-                peripherals = self.svd_file.peripherals.itervalues()
-            except AttributeError:
-                peripherals = self.svd_file.peripherals.values()
+            peripherals = self.svd_device.peripherals
             column_width = max(len(p.name) for p in peripherals) + 2  # padding
-            try:
-                peripherals = self.svd_file.peripherals.itervalues()
-            except AttributeError:
-                peripherals = self.svd_file.peripherals.values()
             for p in peripherals:
-                desc = re.sub(r'\s+', ' ', p.description)
+                desc = re.sub(r'\s+', ' ', p._description)
                 gdb.write("\t{}:{}{}\n".format(p.name, "".ljust(column_width - len(p.name)), desc))
             return
 
-        def warn_if_ambiguous(smart_dict, key):
-            if smart_dict.is_ambiguous(key):
-                gdb.write('Warning: {} could prefix match any of: {}\n'.format(
-
-                    key, ', '.join(smart_dict.prefix_match_iter(key))))
-
-        registers = None
         if len(s) >= 1:
             peripheral_name = s[0]
-            if peripheral_name not in self.svd_file.peripherals:
+            matching_peripherals = [p for p in self.svd_device.peripherals if p.name.lower().startswith(peripheral_name.lower())]
+            if len(matching_peripherals) > 1:
                 gdb.write("Peripheral {} does not exist!\n".format(s[0]))
                 return
-
-            warn_if_ambiguous(self.svd_file.peripherals, peripheral_name)
-
-            peripheral = self.svd_file.peripherals[peripheral_name]
+            # Warn if this matches more than one
+            if len(matching_peripherals) > 1:
+                matching_names = ", ".join([p.name for p in matching_peripherals])
+                gdb.write(f'Aborting: {peripheral_name} could prefix match any of: {matching_names}\n')
+                return
+            
+            # But select the first one as long as there is one
+            peripheral = matching_peripherals[0]
 
         if len(s) == 1:
             self._print_registers(peripheral.name, form, peripheral.registers)
-            if len(peripheral.clusters) > 0:
-                try:
-                    clusters_iter = peripheral.clusters.itervalues()
-                except AttributeError:
-                    clusters_iter = peripheral.clusters.values()
+            if peripheral._register_arrays:
+                clusters_iter = peripheral._register_arrays
                 gdb.write("Clusters in %s:\n" % peripheral.name)
-                reg_list = []
+                reg_list: List[Tuple[str, str, str]] = []
                 for r in clusters_iter:
                     desc = re.sub(r'\s+', ' ', r.description)
                     reg_list.append((r.name, "", desc))
@@ -266,59 +262,109 @@ class SVD(gdb.Command):
 
         cluster = None
         if len(s) == 2:
-            if s[1] in peripheral.clusters:
-                warn_if_ambiguous(peripheral.clusters, s[1])
-                cluster = peripheral.clusters[s[1]]
+            matching_clusters = []
+            if peripheral._register_arrays is not None:
+                matching_clusters = [c for c in peripheral._register_arrays if c.name.lower().startswith(s[1].lower())]
+
+            matching_registers = []
+            if peripheral._registers is not None:
+                matching_registers = [r for r in peripheral._registers if r.name.lower().startswith(s[1].lower())]
+
+
+            if matching_clusters:
+                # Warn if this matches more than one
+                if len(matching_clusters) > 1:
+                    matching_names = ", ".join([c.name for c in matching_clusters])
+                    gdb.write(f'Aborting: {s[1]} could prefix match any of: {matching_names}\n')
+                    return
+
+                cluster = matching_clusters[0]
                 container = peripheral.name + ' > ' + cluster.name
                 self._print_registers(container, form, cluster.registers)
+            elif matching_registers:
+                # Warn if this matches more than one
+                if len(matching_registers) > 1:
+                    matching_names = ", ".join([r.name for r in matching_registers])
+                    gdb.write(f'Aborting: {s[1]} could prefix match any of: {matching_names}\n')
+                    return
 
-            elif s[1] in peripheral.registers:
-                warn_if_ambiguous(peripheral.registers, s[1])
-                register = peripheral.registers[s[1]]
+                register = matching_registers
                 container = peripheral.name + ' > ' + register.name
-
                 self._print_register_fields(container, form, register)
 
             else:
-                gdb.write("Register/cluster {} in peripheral {} does not exist!\n".format(
-                    s[1], peripheral.name))
+                gdb.write(f"Register/cluster {s[1]} in peripheral {peripheral.name} does not exist!\n")
             return
 
         if len(s) == 3:
-            if s[1] not in peripheral.clusters:
-                gdb.write("Cluster {} in peripheral {} does not exist!\n".format(
-                    s[1], peripheral.name))
-                return
-            warn_if_ambiguous(peripheral.clusters, s[1])
+            # Must be reading from a register within a cluster
 
-            cluster = peripheral.clusters[s[1]]
-            if s[2] not in cluster.registers:
-                gdb.write("Register {} in cluster {} in peripheral {} does not exist!\n".format(
-                    s[2], cluster.name, peripheral.name))
-                return
-            warn_if_ambiguous(cluster.registers, s[2])
+            matching_clusters = []
+            if peripheral._register_arrays is not None:
+                matching_clusters = [c for c in peripheral._register_arrays if c.name.lower().startswith(s[1].lower())]
 
-            register = cluster.registers[s[2]]
+            if not matching_clusters:
+                gdb.write(f"Cluster {s[1]} in peripheral {peripheral.name} does not exist!\n")
+                return
+
+            # Warn if this matches more than one
+            if len(matching_clusters) > 1:
+                matching_names = ", ".join([c.name for c in matching_clusters])
+                gdb.write(f'Aborting: {s[1]} could prefix match any of: {matching_names}\n')
+                return
+
+            cluster = matching_clusters[0]
+
+            matching_registers = []
+            if peripheral._registers is not None:
+                matching_registers = [r for r in peripheral._registers if r.name.lower().startswith(s[2].lower())]
+
+            if not matching_registers:
+                gdb.write(f"Register {s[2]} in cluster {cluster.name} in peripheral {peripheral.name} does not exist!\n")
+                return
+
+            # Warn if this matches more than one
+            if len(matching_registers) > 1:
+                matching_names = ", ".join([r.name for r in matching_registers])
+                gdb.write(f'Aborting: {s[2]} could prefix match any of: {matching_names}\n')
+                return
+
+            register = matching_registers[0]
+
             container = ' > '.join([peripheral.name, cluster.name, register.name])
             self._print_register_fields(container, form, register)
             return
 
         if len(s) == 4:
-            if s[1] not in peripheral.registers:
-                gdb.write("Register {} in peripheral {} does not exist!\n".format(
-                    s[1], peripheral.name))
+
+            matching_registers = []
+            if peripheral._registers is not None:
+                matching_registers = [r for r in peripheral._registers if r.name.lower().startswith(s[1].lower())]
+
+            if not matching_registers:
+                gdb.write(f"Register {s[1]} in peripheral {peripheral.name} does not exist!\n")
                 return
-            warn_if_ambiguous(peripheral.registers, s[1])
 
-            reg = peripheral.registers[s[1]]
-
-            if s[2] not in reg.fields:
-                gdb.write("Field {} in register {} in peripheral {} does not exist!\n".format(
-                    s[2], reg.name, peripheral.name))
+            # Warn if this matches more than one
+            if len(matching_registers) > 1:
+                matching_names = ", ".join([r.name for r in matching_registers])
+                gdb.write(f'Aborting: {s[1]} could prefix match any of: {matching_names}\n')
                 return
-            warn_if_ambiguous(reg.fields, s[2])
 
-            field = reg.fields[s[2]]
+            reg = matching_registers[0]
+
+            matching_fields = [f for f in reg._fields if f.name.lower().startswith(s[2].lower())]
+            if not matching_fields:
+                gdb.write(f"Field {s[2]} in register {reg.name} in peripheral {peripheral.name} does not exist!\n")
+                return
+
+            # Warn if this matches more than one
+            if matching_fields > 1:
+                matching_names = ", ".join([r.name for r in matching_fields])
+                gdb.write(f'Aborting: {s[2]} could prefix match any of: {matching_names}\n')
+                return
+
+            field = matching_fields[0]
 
             if not field.writable() or not reg.writable():
                 gdb.write("Field {} in register {} in peripheral {} is read-only!\n".format(
@@ -329,12 +375,12 @@ class SVD(gdb.Command):
                 val = int(s[3], 0)
             except ValueError:
                 gdb.write(
-                    "{} is not a valid number! You can prefix numbers with 0x for hex, 0b for binary, or any python "
-                    "int literal\n".format(s[3]))
+                    f"{s[3]} is not a valid number! You can prefix numbers with 0x for hex, 0b for binary, or any python "
+                    "int literal\n")
                 return
 
-            if val >= 1 << field.width or val < 0:
-                gdb.write("{} not a valid number for a field with width {}!\n".format(val, field.width))
+            if val >= 1 << field.bit_width or val < 0:
+                gdb.write("{} not a valid number for a field with width {}!\n".format(val, field.bit_width))
                 return
 
             if not reg.readable():
@@ -378,7 +424,7 @@ class SVD(gdb.Command):
         return []
 
     @staticmethod
-    def read(address, bits=32):
+    def read(address: int, bits=32):
         """ Read from memory and return an integer
         """
         value = gdb.selected_inferior().read_memory(address, bits / 8)
