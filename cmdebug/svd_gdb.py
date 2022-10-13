@@ -37,7 +37,20 @@ BITS_TO_UNPACK_FORMAT = {
 
 def _reg_address(reg: svd_model.SVDRegister) -> int:
     assert reg.parent is not None and reg.parent._address_block is not None, f"Cannot get address for parentless register {reg.name}"
-    return reg.parent._address_block.address + reg.address_offset
+    return reg.parent._base_address + reg.address_offset
+
+def _field_accessible(field: svd_model.SVDField, mode: str) -> bool:
+    if field.access is not None:
+        return mode in field.access
+    elif field.parent._access is not None:
+        return mode in field.parent._access
+    return False
+
+def _field_readable(field: svd_model.SVDField) -> bool:
+    return _field_accessible(field, "read")
+
+def _field_writeable(field: svd_model.SVDField) -> bool:
+    return _field_accessible(field, "write")
 
 class LoadSVD(gdb.Command):
     """ A command to load an SVD file and to create the command for inspecting
@@ -115,30 +128,26 @@ class SVD(gdb.Command):
         gdb.Command.__init__(self, "svd", gdb.COMMAND_DATA)
         self.svd_device = svd_device
 
-    def _print_registers(self, container_name, form, registers):
+    def _print_registers(self, container_name, form: str, registers: List[svd_model.SVDRegister]):
         if len(registers) == 0:
             return
-        try:
-            regs_iter = registers.itervalues()
-        except AttributeError:
-            regs_iter = registers.values()
-        gdb.write("Registers in %s:\n" % container_name)
-        reg_list = []
-        for r in regs_iter:
-            if r.readable():
+        gdb.write(f"Registers in {container_name}:\n")
+        reg_list: List[Tuple[str, str, str]] = []
+        for r in registers:
+            if r._access is not None and "read" in r._access:
                 try:
-                    data = self.read(r.address(), r.size)
-                    data = self.format(data, form, r.size)
+                    data = self.read(_reg_address(r), r._size)
+                    data_str = self.format(data, form, r._size)
                     if form == 'a':
-                        data += " <" + re.sub(r'\s+', ' ',
+                        data_str += " <" + re.sub(r'\s+', ' ',
                                               gdb.execute("info symbol {}".format(data), True,
                                                           True).strip()) + ">"
                 except gdb.MemoryError:
-                    data = "(error reading)"
+                    data_str = "(error reading)"
             else:
-                data = "(not readable)"
+                data_str = "(not readable)"
             desc = re.sub(r'\s+', ' ', r.description)
-            reg_list.append((r.name, data, desc))
+            reg_list.append((r.name, data_str, desc))
 
         column1_width = max(len(reg[0]) for reg in reg_list) + 2  # padding
         column2_width = max(len(reg[1]) for reg in reg_list)
@@ -148,31 +157,30 @@ class SVD(gdb.Command):
                 gdb.write("  {}".format(reg[2]))
             gdb.write("\n")
 
-    def _print_register_fields(self, container_name, form, register):
-        gdb.write("Fields in {}:\n".format(container_name))
-        fields = register.fields
-        if not register.readable():
+    def _print_register_fields(self, container_name: str, form: str, register: svd_model.SVDRegister):
+        gdb.write(f"Fields in {container_name}:\n")
+        fields = register._fields
+        if "read" not in register._access:
             data = 0
         else:
-            data = self.read(register.address(), register.size)
-        field_list = []
-        try:
-            fields_iter = fields.itervalues()
-        except AttributeError:
-            fields_iter = fields.values()
-        for f in fields_iter:
+            data = self.read(_reg_address(register), register._size)
+        field_list: List[Tuple[str, str, str]] = []
+        for f in register._fields:
+            
             desc = re.sub(r'\s+', ' ', f.description)
-            if register.readable():
-                val = data >> f.offset
-                val &= (1 << f.width) - 1
-                if f.enum:
-                    if val in f.enum:
-                        desc = f.enum[val][1] + " - " + desc
-                        val = f.enum[val][0]
+            if _field_readable(f):
+                val = data >> f.bit_offset
+                val &= (1 << f.bit_width) - 1
+                if f.enumerated_values:
+                    matching_values = [e for e in f.enumerated_values if e.value == val]
+                    if matching_values:
+                        enum = matching_values[0]
+                        desc = f"{enum.name} - {enum.description}"
+                        val = enum.name
                     else:
-                        val = "Invalid enum value: " + self.format(val, form, f.width)
+                        val = "Invalid enum value: " + self.format(val, form, f.bit_width)
                 else:
-                    val = self.format(val, form, f.width)
+                    val = self.format(val, form, f.bit_width)
             else:
                 val = "(not readable)"
             field_list.append((f.name, val, desc))
@@ -228,17 +236,16 @@ class SVD(gdb.Command):
         if len(s) >= 1:
             peripheral_name = s[0]
             matching_peripherals = [p for p in self.svd_device.peripherals if p.name.lower().startswith(peripheral_name.lower())]
-            if len(matching_peripherals) > 1:
-                gdb.write("Peripheral {} does not exist!\n".format(s[0]))
+            if len(matching_peripherals) < 1:
+                gdb.write(f"Peripheral {s[0]} does not exist!\n")
                 return
             # Warn if this matches more than one
             if len(matching_peripherals) > 1:
                 matching_names = ", ".join([p.name for p in matching_peripherals])
-                gdb.write(f'Aborting: {peripheral_name} could prefix match any of: {matching_names}\n')
-                return
+                gdb.write(f'Warning: {peripheral_name} could prefix match any of: {matching_names}\n')
             
             # But select the first one as long as there is one
-            peripheral = matching_peripherals[0]
+            peripheral = sorted(matching_peripherals, key=lambda x: x.name)[0]
 
         if len(s) == 1:
             self._print_registers(peripheral.name, form, peripheral.registers)
@@ -262,21 +269,20 @@ class SVD(gdb.Command):
 
         cluster = None
         if len(s) == 2:
+            gdb.write(f"{[r.name for r in peripheral.registers]}\n")
             matching_clusters = []
             if peripheral._register_arrays is not None:
                 matching_clusters = [c for c in peripheral._register_arrays if c.name.lower().startswith(s[1].lower())]
 
             matching_registers = []
-            if peripheral._registers is not None:
+            if peripheral.registers is not None:
                 matching_registers = [r for r in peripheral._registers if r.name.lower().startswith(s[1].lower())]
-
 
             if matching_clusters:
                 # Warn if this matches more than one
                 if len(matching_clusters) > 1:
                     matching_names = ", ".join([c.name for c in matching_clusters])
-                    gdb.write(f'Aborting: {s[1]} could prefix match any of: {matching_names}\n')
-                    return
+                    gdb.write(f'Warning: {s[1]} could prefix match any of: {matching_names}\n')
 
                 cluster = matching_clusters[0]
                 container = peripheral.name + ' > ' + cluster.name
@@ -285,10 +291,9 @@ class SVD(gdb.Command):
                 # Warn if this matches more than one
                 if len(matching_registers) > 1:
                     matching_names = ", ".join([r.name for r in matching_registers])
-                    gdb.write(f'Aborting: {s[1]} could prefix match any of: {matching_names}\n')
-                    return
+                    gdb.write(f'Warning: {s[1]} could prefix match any of: {matching_names}\n')
 
-                register = matching_registers
+                register = sorted(matching_registers)[0]
                 container = peripheral.name + ' > ' + register.name
                 self._print_register_fields(container, form, register)
 
@@ -407,24 +412,36 @@ class SVD(gdb.Command):
             else:
                 return [] # completion after e.g. "svd/x" but before trailing space
 
-        if len(s) == 1:
-            return list(self.svd_file.peripherals.prefix_match_iter(s[0]))
+        peripheral: Optional[svd_model.SVDPeripheral] = None
+
+        if len(s) >= 1:
+            matching_peripherals = [p for p in self.svd_device.peripherals if p.name.lower().startswith(s[0].lower())]
+            if len(matching_peripherals) == 1:
+                peripheral = matching_peripherals[0]
+            if len(s) == 1:
+                return [p.name for p in matching_peripherals]
 
         if len(s) == 2:
-            reg = s[1].upper()
+            if peripheral is None:
+                # No peripheral to look for a register in
+                return []
+
+            reg = s[1]
             if len(reg) and reg[0] == '&':
                 reg = reg[1:]
 
-            if s[0] not in self.svd_file.peripherals:
+            regs = peripheral.registers + peripheral._register_arrays
+            matching_regs = [r for r in regs if r.name.lower().startswith(reg.lower())]
+
+            if len(matching_regs) == 0:
                 return []
 
-            per = self.svd_file.peripherals[s[0]]
-            return list(per.registers.prefix_match_iter(s[1]))
+            return [r.name for r in matching_regs]
 
         return []
 
     @staticmethod
-    def read(address: int, bits=32):
+    def read(address: int, bits:int = 32) -> int:
         """ Read from memory and return an integer
         """
         value = gdb.selected_inferior().read_memory(address, bits / 8)
@@ -445,7 +462,7 @@ class SVD(gdb.Command):
         gdb.selected_inferior().write_memory(address, bytes(data), bits / 8)
 
     @staticmethod
-    def format(value, form, length=32):
+    def format(value: int, form: str, length: int=32) -> str:
         """ Format a number based on a format character and length
         """
         # get current gdb radix setting
