@@ -440,12 +440,16 @@ class SVDPeripheralRegisterField:
                 # Skip the "name" tag and any entries that don't have a value
                 if v.tag == "name" or not hasattr(v, "value"):
                     continue
-                # Some Kinetis parts have values with # instead of 0x...
-                value = str(v.value).replace("#", "0x")
+
+                value = str(v.value)
                 description = str(getattr(v, "description", ""))
                 try:
-                    index = int(value, 0)
-                    self.enum[int(value, 0)] = (str(v.name), description)
+                    if value[0] == '#':
+                        # binary value according to the SVD specification
+                        index = int(value[1:], 2)
+                    else:
+                        index = int(value, 0)
+                    self.enum[index] = (str(v.name), description)
                 except ValueError:
                     # If the value couldn't be converted as a single integer, skip it
                     pass
