@@ -22,7 +22,7 @@ import sys
 import struct
 import pkg_resources
 
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Union
 
 sys.path.append('.')
 #from cmdebug.svd import SVDFile
@@ -35,8 +35,8 @@ BITS_TO_UNPACK_FORMAT = {
     32: "I",
 }
 
-def _reg_address(reg: svd_model.SVDRegister) -> int:
-    assert reg.parent is not None and reg.parent._address_block is not None, f"Cannot get address for parentless register {reg.name}"
+def _reg_address(reg: Union[svd_model.SVDRegister, svd_model.SVDRegisterArray]) -> int:
+    assert reg.parent is not None, f"Cannot get address for parentless register {reg.name}"
     return reg.parent._base_address + reg.address_offset
 
 def _field_accessible(field: svd_model.SVDField, mode: str) -> bool:
@@ -51,6 +51,28 @@ def _field_readable(field: svd_model.SVDField) -> bool:
 
 def _field_writeable(field: svd_model.SVDField) -> bool:
     return _field_accessible(field, "write")
+
+def _reg_accessible(reg: Union[svd_model.SVDRegister, svd_model.SVDRegisterArray], mode: str) -> bool:
+    if reg._access is not None:
+        return mode in reg._access
+    elif reg.parent._access is not None:
+        return mode in reg.parent._access
+    return False
+
+def _reg_readable(reg: Union[svd_model.SVDRegister, svd_model.SVDRegisterArray]) -> bool:
+    return _reg_accessible(reg, "read")
+
+def _reg_writeable(reg: Union[svd_model.SVDRegister, svd_model.SVDRegisterArray]) -> bool:
+    return _reg_accessible(reg, "write")
+
+def _get_regs_by_addresss(peripheral: svd_model.SVDPeripheral) -> List[Tuple[str, svd_model.SVDRegister, int]]:
+    reg_list: List[Tuple[str, svd_model.SVDRegister, int]] = []
+    for r in peripheral.registers:
+        # Assign parent for the lookup, since we know it and for some reason registers derivered from a register array don't have a parent set
+        r.parent = peripheral
+        reg_list.append((r.name, r, _reg_address(r)))
+
+    return sorted(reg_list, key=lambda x: x[2])
 
 class LoadSVD(gdb.Command):
     """ A command to load an SVD file and to create the command for inspecting
@@ -128,30 +150,32 @@ class SVD(gdb.Command):
         gdb.Command.__init__(self, "svd", gdb.COMMAND_DATA)
         self.svd_device = svd_device
 
-    def _print_registers(self, container_name, form: str, registers: List[svd_model.SVDRegister]):
-        if len(registers) == 0:
-            return
+    def _print_registers(self, container_name, form: str, peripheral: svd_model.SVDPeripheral):
         gdb.write(f"Registers in {container_name}:\n")
-        reg_list: List[Tuple[str, str, str]] = []
-        for r in registers:
-            if r._access is not None and "read" in r._access:
+
+        reg_list = _get_regs_by_addresss(peripheral)
+        reg_list_str: List[Tuple[str, str, str]] = []
+
+        for name, r, addr in reg_list:
+            if _reg_readable(r):
                 try:
-                    data = self.read(_reg_address(r), r._size)
+                    data = self.read(addr, r._size)
                     data_str = self.format(data, form, r._size)
                     if form == 'a':
                         data_str += " <" + re.sub(r'\s+', ' ',
-                                              gdb.execute("info symbol {}".format(data), True,
-                                                          True).strip()) + ">"
+                                                gdb.execute("info symbol {}".format(data), True,
+                                                            True).strip()) + ">"
                 except gdb.MemoryError:
                     data_str = "(error reading)"
             else:
                 data_str = "(not readable)"
-            desc = re.sub(r'\s+', ' ', r.description)
-            reg_list.append((r.name, data_str, desc))
 
-        column1_width = max(len(reg[0]) for reg in reg_list) + 2  # padding
-        column2_width = max(len(reg[1]) for reg in reg_list)
-        for reg in reg_list:
+            desc = re.sub(r'\s+', ' ', r.description)
+            reg_list_str.append((name, data_str, desc))
+
+        column1_width = max(len(reg[0]) for reg in reg_list_str) + 2  # padding
+        column2_width = max(len(reg[1]) for reg in reg_list_str)
+        for reg in reg_list_str:
             gdb.write("\t{}:{}{}".format(reg[0], "".ljust(column1_width - len(reg[0])), reg[1].rjust(column2_width)))
             if reg[2] != reg[0]:
                 gdb.write("  {}".format(reg[2]))
@@ -221,7 +245,7 @@ class SVD(gdb.Command):
             gdb.write("\td(default):decimal, x: hex, o: octal, b: binary\n")
             gdb.write("\n")
             gdb.write(
-                "Both prefix matching and case-insensitive matching is supported for peripherals, registers, clusters and fields.\n")
+                "Both prefix matching and case-insensitive matching is supported for peripherals, registers, and fields.\n")
             return
 
         if not len(s[0]):
@@ -248,84 +272,38 @@ class SVD(gdb.Command):
             peripheral = sorted(matching_peripherals, key=lambda x: x.name)[0]
 
         if len(s) == 1:
-            self._print_registers(peripheral.name, form, peripheral.registers)
-            if peripheral._register_arrays:
-                clusters_iter = peripheral._register_arrays
-                gdb.write("Clusters in %s:\n" % peripheral.name)
-                reg_list: List[Tuple[str, str, str]] = []
-                for r in clusters_iter:
-                    desc = re.sub(r'\s+', ' ', r.description)
-                    reg_list.append((r.name, "", desc))
-
-                column1_width = max(len(reg[0]) for reg in reg_list) + 2  # padding
-                column2_width = max(len(reg[1]) for reg in reg_list)
-                for reg in reg_list:
-                    gdb.write(
-                        "\t{}:{}{}".format(reg[0], "".ljust(column1_width - len(reg[0])), reg[1].rjust(column2_width)))
-                    if reg[2] != reg[0]:
-                        gdb.write("  {}".format(reg[2]))
-                    gdb.write("\n")
+            self._print_registers(peripheral.name, form, peripheral)
             return
 
-        cluster = None
         if len(s) == 2:
-            gdb.write(f"{[r.name for r in peripheral.registers]}\n")
-            matching_clusters = []
-            if peripheral._register_arrays is not None:
-                matching_clusters = [c for c in peripheral._register_arrays if c.name.lower().startswith(s[1].lower())]
-
             matching_registers = []
             if peripheral.registers is not None:
-                matching_registers = [r for r in peripheral._registers if r.name.lower().startswith(s[1].lower())]
+                matching_registers = [r for r in peripheral.registers if r.name.lower().startswith(s[1].lower())]
 
-            if matching_clusters:
-                # Warn if this matches more than one
-                if len(matching_clusters) > 1:
-                    matching_names = ", ".join([c.name for c in matching_clusters])
-                    gdb.write(f'Warning: {s[1]} could prefix match any of: {matching_names}\n')
-
-                cluster = matching_clusters[0]
-                container = peripheral.name + ' > ' + cluster.name
-                self._print_registers(container, form, cluster.registers)
-            elif matching_registers:
+            if matching_registers:
                 # Warn if this matches more than one
                 if len(matching_registers) > 1:
                     matching_names = ", ".join([r.name for r in matching_registers])
                     gdb.write(f'Warning: {s[1]} could prefix match any of: {matching_names}\n')
 
-                register = sorted(matching_registers)[0]
+                register = sorted(matching_registers, key=lambda x: x.name)[0]
                 container = peripheral.name + ' > ' + register.name
+                register.parent = peripheral
                 self._print_register_fields(container, form, register)
 
             else:
-                gdb.write(f"Register/cluster {s[1]} in peripheral {peripheral.name} does not exist!\n")
+                gdb.write(f"Register {s[1]} in peripheral {peripheral.name} does not exist!\n")
             return
 
         if len(s) == 3:
-            # Must be reading from a register within a cluster
-
-            matching_clusters = []
-            if peripheral._register_arrays is not None:
-                matching_clusters = [c for c in peripheral._register_arrays if c.name.lower().startswith(s[1].lower())]
-
-            if not matching_clusters:
-                gdb.write(f"Cluster {s[1]} in peripheral {peripheral.name} does not exist!\n")
-                return
-
-            # Warn if this matches more than one
-            if len(matching_clusters) > 1:
-                matching_names = ", ".join([c.name for c in matching_clusters])
-                gdb.write(f'Aborting: {s[1]} could prefix match any of: {matching_names}\n')
-                return
-
-            cluster = matching_clusters[0]
+            # Must be reading from a register
 
             matching_registers = []
-            if peripheral._registers is not None:
-                matching_registers = [r for r in peripheral._registers if r.name.lower().startswith(s[2].lower())]
+            if peripheral.registers is not None:
+                matching_registers = [r for r in peripheral.registers if r.name.lower().startswith(s[2].lower())]
 
             if not matching_registers:
-                gdb.write(f"Register {s[2]} in cluster {cluster.name} in peripheral {peripheral.name} does not exist!\n")
+                gdb.write(f"Register {s[2]} in peripheral {peripheral.name} does not exist!\n")
                 return
 
             # Warn if this matches more than one
@@ -336,15 +314,15 @@ class SVD(gdb.Command):
 
             register = matching_registers[0]
 
-            container = ' > '.join([peripheral.name, cluster.name, register.name])
+            container = ' > '.join([peripheral.name, register.name])
             self._print_register_fields(container, form, register)
             return
 
         if len(s) == 4:
 
             matching_registers = []
-            if peripheral._registers is not None:
-                matching_registers = [r for r in peripheral._registers if r.name.lower().startswith(s[1].lower())]
+            if peripheral.registers is not None:
+                matching_registers = [r for r in peripheral.registers if r.name.lower().startswith(s[1].lower())]
 
             if not matching_registers:
                 gdb.write(f"Register {s[1]} in peripheral {peripheral.name} does not exist!\n")
@@ -430,8 +408,7 @@ class SVD(gdb.Command):
             if len(reg) and reg[0] == '&':
                 reg = reg[1:]
 
-            regs = peripheral.registers + peripheral._register_arrays
-            matching_regs = [r for r in regs if r.name.lower().startswith(reg.lower())]
+            matching_regs = [r for r in peripheral.registers if r.name.lower().startswith(reg.lower())]
 
             if len(matching_regs) == 0:
                 return []
