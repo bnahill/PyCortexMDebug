@@ -375,6 +375,8 @@ class SVDPeripheralRegister:
             self.name = str(svd_elem.name)
             self.access = str(getattr(svd_elem, "access", "read-write"))
             self.size = getattr(svd_elem, "size", 0x20)
+            if type(self.size) is not int:
+                self.size = int(str(self.size), 0)
 
             self.fields = SmartDict()
             if hasattr(svd_elem, "fields"):
