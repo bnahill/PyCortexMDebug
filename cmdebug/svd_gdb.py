@@ -179,7 +179,7 @@ class SVD(gdb.Command):
             gdb.write("\n")
 
     def invoke(self, args, from_tty):
-        s = str(args).split(" ")
+        s = str(args).split()
         form = ""
         if s[0] and s[0][0] == '/':
             if len(s[0]) == 1:
