@@ -28,6 +28,5 @@ setup(
 	license='GPL',
 	install_requires=[
 	  'setuptools',
-	  'lxml',
 	],
 )

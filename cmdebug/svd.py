@@ -16,7 +16,6 @@ You should have received a copy of the GNU General Public License
 along with PyCortexMDebug.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import lxml.objectify as objectify
 import sys
 from collections import OrderedDict
 import os
@@ -24,6 +23,7 @@ import pickle
 import traceback
 import re
 import warnings
+from xml.etree import ElementTree as ET
 
 from typing import Dict, Tuple, Any, Iterable, Union
 
@@ -128,25 +128,20 @@ class SVDFile:
         Args:
             fname: Filename for the SVD file
         """
-        f = objectify.parse(os.path.expanduser(fname))
+        f = ET.parse(os.path.expanduser(fname))
         root = f.getroot()
-        periph = root.peripherals.getchildren()
         self.peripherals = SmartDict()
         self.base_address = 0
 
         # XML elements
-        for p in periph:
+        for p in root.iterfind("peripherals/peripheral"):
             try:
-                if p.tag == "peripheral":
-                    self.peripherals[str(p.name)] = SVDPeripheral(p, self)
-                else:
-                    # This is some other tag
-                    pass
+                self.peripherals[str(p.findtext("name"))] = SVDPeripheral(p, self)
             except SVDNonFatalError as e:
                 print(e)
 
 
-def add_register(parent: Union["SVDPeripheral", "SVDRegisterCluster"], node):
+def add_register(parent: Union["SVDPeripheral", "SVDRegisterCluster"], node: ET.Element):
     """
     Add a register node to a peripheral
 
@@ -155,20 +150,24 @@ def add_register(parent: Union["SVDPeripheral", "SVDRegisterCluster"], node):
         node: XML file node fot of the register
     """
 
-    if hasattr(node, "dim"):
-        dim = int(str(node.dim), 0)
+    name_str = node.findtext("name")
+    dim_str = node.findtext("dim")
+
+    if dim_str:
+        dim = int(dim_str, 0)
         # dimension is not used, number of split indexes should be same
-        incr = int(str(node.dimIncrement), 0)
+        incr = int(node.findtext("dimIncrement"), 0)
         default_dim_index = ",".join((str(i) for i in range(dim)))
-        dim_index = str(getattr(node, "dimIndex", default_dim_index))
+        dim_index = node.findtext("dimIndex", default_dim_index)
         indices = dim_index.split(',')
         offset = 0
+        desc_base = node.findtext("description")
         for i in indices:
-            name = str(node.name) % i
+            name = name_str % i
             try:
-                desc = str(node.description) % i
+                desc = desc_base % i
             except TypeError:
-                desc = str(node.description)
+                desc = desc_base
             reg = SVDPeripheralRegister(node, parent)
             reg.name = name
             reg.description = desc
@@ -178,30 +177,32 @@ def add_register(parent: Union["SVDPeripheral", "SVDRegisterCluster"], node):
     else:
         try:
             reg = SVDPeripheralRegister(node, parent)
-            name = str(node.name)
-            if name not in parent.registers:
-                parent.registers[name] = reg
+            if name_str not in parent.registers:
+                parent.registers[name_str] = reg
             else:
-                if hasattr(node, "alternateGroup"):
-                    print(f"Register {name} has an alternate group")
+                if node.find("alternateGroup"):
+                    print(f"Register {name_str} has an alternate group")
         except SVDNonFatalError as e:
             print(e)
 
 
-def add_cluster(parent: "SVDPeripheral", node) -> None:
+def add_cluster(parent: "SVDPeripheral", node: ET.Element) -> None:
     """
     Add a register cluster to a peripheral
     """
-    if hasattr(node, "dim"):
-        dim = int(str(node.dim), 0)
+    name_str = node.findtext("name")
+    dim_str = node.findtext("dim")
+
+    if dim_str:
+        dim = int(dim_str, 0)
         # dimension is not used, number of split indices should be same
-        incr = int(str(node.dimIncrement), 0)
+        incr = int(node.findtext("dimIncrement"), 0)
         default_dim_index = ",".join((str(i) for i in range(dim)))
-        dim_index = str(getattr(node, "dimIndex", default_dim_index))
+        dim_index = node.findtext("dimIndex", default_dim_index)
         indices = dim_index.split(',')
         offset = 0
         for i in indices:
-            name = str(node.name) % i
+            name = name_str % i
             cluster = SVDRegisterCluster(node, parent)
             cluster.name = name
             cluster.address_offset += offset
@@ -210,7 +211,7 @@ def add_cluster(parent: "SVDPeripheral", node) -> None:
             offset += incr
     else:
         try:
-            parent.clusters[str(node.name)] = SVDRegisterCluster(node, parent)
+            parent.clusters[name_str] = SVDRegisterCluster(node, parent)
         except SVDNonFatalError as e:
             print(e)
 
@@ -229,7 +230,7 @@ class SVDRegisterCluster:
     registers: SmartDict
     clusters: SmartDict
 
-    def __init__(self, svd_elem, parent: "SVDPeripheral"):
+    def __init__(self, svd_elem: ET.Element, parent: "SVDPeripheral"):
         """
 
         Args:
@@ -238,17 +239,15 @@ class SVDRegisterCluster:
         """
         self.parent_base_address = parent.base_address
         self.parent_name = parent.name
-        self.address_offset = int(str(svd_elem.addressOffset), 0)
+        self.address_offset = int(svd_elem.findtext("addressOffset"), 0)
         self.base_address = self.address_offset + self.parent_base_address
         # This doesn't inherit registers from anything
-        children = svd_elem.getchildren()
-        self.description = str(getattr(svd_elem, "description", ""))
-        self.name = str(svd_elem.name)
+        self.description = svd_elem.findtext("description", "")
+        self.name = svd_elem.findtext("name")
         self.registers = SmartDict()
         self.clusters = SmartDict()
-        for r in children:
-            if r.tag == "register":
-                add_register(self, r)
+        for register in svd_elem.iterfind("register"):
+            add_register(self, register)
 
     def refactor_parent(self, parent: "SVDPeripheral"):
         self.parent_base_address = parent.base_address
@@ -270,7 +269,7 @@ class SVDPeripheral:
     name: str
     description: str
 
-    def __init__(self, svd_elem, parent: SVDFile) -> None:
+    def __init__(self, svd_elem: ET.Element, parent: SVDFile) -> None:
         """
 
         Args:
@@ -279,43 +278,39 @@ class SVDPeripheral:
         """
         self.parent_base_address = parent.base_address
 
+        # This has to exist or the assignment in SVDFile fails.
+        self.name = svd_elem.findtext("name")
+
         # Look for a base address, as it is required
-        if not hasattr(svd_elem, "baseAddress"):
+        base_address_str = svd_elem.findtext("baseAddress")
+        if base_address_str is None:
             raise SVDNonFatalError(f"Periph without base address")
-        self.base_address = int(str(svd_elem.baseAddress), 0)
-        if 'derivedFrom' in svd_elem.attrib:
-            derived_from = svd_elem.attrib['derivedFrom']
-            try:
-                self.name = str(svd_elem.name)
-            except AttributeError:
-                self.name = parent.peripherals[derived_from].name
-            try:
-                self.description = str(svd_elem.description)
-            except AttributeError:
-                self.description = parent.peripherals[derived_from].description
+        self.base_address = int(base_address_str, 0)
+
+        derived_from = svd_elem.get('derivedFrom')
+        if derived_from is not None:
+            base_peripheral = parent.peripherals[derived_from]
+            self.description = svd_elem.findtext("description", base_peripheral.description)
 
             # pickle is faster than deepcopy by up to 50% on svd files with a
             # lot of derivedFrom definitions
             def copier(a: Any) -> Any:
                 return pickle.loads(pickle.dumps(a))
 
-            self.registers = copier(parent.peripherals[derived_from].registers)
-            self.clusters = copier(parent.peripherals[derived_from].clusters)
+            self.registers = copier(base_peripheral.registers)
+            self.clusters = copier(base_peripheral.clusters)
             self.refactor_parent(parent)
         else:
             # This doesn't inherit registers from anything
-            self.description = str(getattr(svd_elem, "description", ""))
-            self.name = str(svd_elem.name)
+            self.description = svd_elem.findtext("description")
             self.registers = SmartDict()
             self.clusters = SmartDict()
 
-            if hasattr(svd_elem, "registers"):
-                registers = [r for r in svd_elem.registers.getchildren() if r.tag in ["cluster", "register"]]
-                for r in registers:
-                    if r.tag == "cluster":
-                        add_cluster(self, r)
-                    elif r.tag == "register":
-                        add_register(self, r)
+            for register in svd_elem.iterfind("registers/register"):
+                add_register(self, register)
+            
+            for cluster in svd_elem.iterfind("registers/cluster"):
+                add_cluster(self, cluster)
 
     def refactor_parent(self, parent: SVDFile) -> None:
         self.parent_base_address = parent.base_address
@@ -343,47 +338,36 @@ class SVDPeripheralRegister:
     size: int
     fields: SmartDict
 
-    def __init__(self, svd_elem, parent: SVDPeripheral) -> None:
+    def __init__(self, svd_elem: ET.Element, parent: SVDPeripheral) -> None:
         self.parent_base_address = parent.base_address
-        self.offset = int(str(svd_elem.addressOffset), 0)
-        if 'derivedFrom' in svd_elem.attrib:
-            derived_from = svd_elem.attrib['derivedFrom']
-            try:
-                self.name = str(svd_elem.name)
-            except AttributeError:
-                self.name = parent.registers[derived_from].name
-            try:
-                self.description = str(svd_elem.description)
-            except AttributeError:
-                self.description = str(getattr(svd_elem, "description", ""))
-            try:
-                self.access = str(svd_elem.access)
-            except AttributeError:
-                self.access = str(getattr(svd_elem, "access", "read-write"))
-            try:
-                self.size = str(svd_elem.size)
-            except AttributeError:
-                self.size = getattr(svd_elem, "size", 0x20)
+
+        self.name = svd_elem.findtext("name")
+        self.description = svd_elem.findtext("description")
+        self.access = svd_elem.findtext("access", "read-write")
+        self.size = int(svd_elem.findtext("size", "0x20"), 0)
+
+        self.offset = int(svd_elem.findtext("addressOffset"), 0)
+
+        derived_from = svd_elem.get('derivedFrom')
+        if derived_from is not None:
+            base_register = parent.registers[derived_from]
+            if self.name is None:
+                self.name = base_register.name
+            if self.description is None:
+                self.name = base_register.description
 
             def copier(a: Any) -> Any:
                 return pickle.loads(pickle.dumps(a))
 
-            self.fields = copier(parent.registers[derived_from].fields)
+            self.fields = copier(base_register.fields)
             self.refactor_parent(parent)
         else:
-            self.description = str(getattr(svd_elem, "description", ""))
-            self.name = str(svd_elem.name)
-            self.access = str(getattr(svd_elem, "access", "read-write"))
-            self.size = getattr(svd_elem, "size", 0x20)
-            if type(self.size) is not int:
-                self.size = int(str(self.size), 0)
+            if self.description is None:
+                self.description = ""
 
             self.fields = SmartDict()
-            if hasattr(svd_elem, "fields"):
-                # Filter fields to only consider those of tag "field"
-                fields = [f for f in svd_elem.fields.getchildren() if f.tag == "field"]
-                for f in fields:
-                    self.fields[str(f.name)] = SVDPeripheralRegisterField(f, self)
+            for field in svd_elem.iterfind("fields/field"):
+                self.fields[field.findtext("name")] = SVDPeripheralRegisterField(field, self)
 
     def refactor_parent(self, parent: SVDPeripheral) -> None:
         self.parent_base_address = parent.base_address
@@ -413,48 +397,49 @@ class SVDPeripheralRegisterField:
     access: str
     enum: Dict[int, Tuple[str, str]]
 
-    def __init__(self, svd_elem, parent: SVDPeripheralRegister) -> None:
-        self.name = str(svd_elem.name)
-        self.description = str(getattr(svd_elem, "description", ""))
+    def __init__(self, svd_elem: ET.Element, parent: SVDPeripheralRegister) -> None:
+        self.name = svd_elem.findtext("name")
+        self.description = svd_elem.findtext("description", "")
 
         # Try to extract a bit range (offset and width) from the available fields
-        if hasattr(svd_elem, "bitOffset") and hasattr(svd_elem, "bitWidth"):
-            self.offset = int(str(svd_elem.bitOffset))
-            self.width = int(str(svd_elem.bitWidth))
-        elif hasattr(svd_elem, "bitRange"):
-            bitrange = list(map(int, str(svd_elem.bitRange).strip()[1:-1].split(":")))
+        bit_offset_str = svd_elem.findtext("bitOffset")
+        bit_width_str = svd_elem.findtext("bitWidth")
+        bit_range_str = svd_elem.findtext("bitRange")
+        lsb_str = svd_elem.findtext("lsb")
+        msb_str = svd_elem.findtext("msb")
+
+        if bit_offset_str and bit_width_str:
+            self.offset = int(bit_offset_str)
+            self.width = int(bit_width_str)
+        elif bit_range_str:
+            bitrange = list(map(int, bit_range_str.strip()[1:-1].split(":")))
             self.offset = bitrange[1]
             self.width = 1 + bitrange[0] - bitrange[1]
         else:
-            assert hasattr(svd_elem, "lsb") and hasattr(svd_elem, "msb"),\
+            assert lsb_str and msb_str,\
                 f"Range not found for field {self.name} in register {parent}"
-            lsb = int(str(svd_elem.lsb))
-            msb = int(str(svd_elem.msb))
+            lsb = int(lsb_str)
+            msb = int(msb_str)
             self.offset = lsb
             self.width = 1 + msb - lsb
 
-        self.access = str(getattr(svd_elem, "access", parent.access))
+        self.access = svd_elem.findtext("access", parent.access)
         self.enum = {}
 
-        if hasattr(svd_elem, "enumeratedValues"):
-            values = [v for v in svd_elem.enumeratedValues.getchildren() if v.tag == "enumeratedValue"]
-            for v in values:
-                # Skip the "name" tag and any entries that don't have a value
-                if v.tag == "name" or not hasattr(v, "value"):
-                    continue
-
-                value = str(v.value)
-                description = str(getattr(v, "description", ""))
-                try:
-                    if value[0] == '#':
-                        # binary value according to the SVD specification
-                        index = int(value[1:], 2)
-                    else:
-                        index = int(value, 0)
-                    self.enum[index] = (str(v.name), description)
-                except ValueError:
-                    # If the value couldn't be converted as a single integer, skip it
-                    pass
+        for v in svd_elem.iterfind("enumeratedValues/enumeratedValue"):
+            value = v.findtext("value")
+            name = v.findtext("name", "")
+            description = v.findtext("description", "")
+            try:
+                if value[0] == '#':
+                    # binary value according to the SVD specification
+                    index = int(value[1:], 2)
+                else:
+                    index = int(value, 0)
+                self.enum[index] = (name, description)
+            except ValueError:
+                # If the value couldn't be converted as a single integer, skip it
+                pass
 
     def readable(self) -> bool:
         return self.access in ["read-only", "read-write", "read-writeOnce"]
