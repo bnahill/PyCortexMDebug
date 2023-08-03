@@ -20,7 +20,6 @@ import re
 import math
 import sys
 import struct
-import pkg_resources
 
 sys.path.append('.')
 from cmdebug.svd import SVDFile
@@ -40,6 +39,7 @@ class LoadSVD(gdb.Command):
     def __init__(self):
         self.vendors = {}
         try:
+            import pkg_resources
             vendor_names = pkg_resources.resource_listdir("cmsis_svd", "data")
             for vendor in vendor_names:
                 fnames = pkg_resources.resource_listdir("cmsis_svd", "data/{}".format(vendor))
