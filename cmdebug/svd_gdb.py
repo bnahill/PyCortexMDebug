@@ -20,7 +20,6 @@ import re
 import math
 import sys
 import struct
-import pkg_resources
 
 sys.path.append('.')
 from cmdebug.svd import SVDFile
@@ -40,6 +39,7 @@ class LoadSVD(gdb.Command):
     def __init__(self):
         self.vendors = {}
         try:
+            import pkg_resources
             vendor_names = pkg_resources.resource_listdir("cmsis_svd", "data")
             for vendor in vendor_names:
                 fnames = pkg_resources.resource_listdir("cmsis_svd", "data/{}".format(vendor))
@@ -143,6 +143,8 @@ class SVD(gdb.Command):
     def _print_register_fields(self, container_name, form, register):
         gdb.write("Fields in {}:\n".format(container_name))
         fields = register.fields
+        if len(fields) == 0:
+            return
         if not register.readable():
             data = 0
         else:

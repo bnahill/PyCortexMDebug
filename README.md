@@ -15,7 +15,7 @@ can download SVD files for different manufacturers
 I originally tested primarily with ST parts, then Freescale for a while. Now many vendor parts have been tested, each with their own quirks.
 If you run into a file that doesn't parse right, either make an issue and ask for help or fix it and push a patch.
 
-The implementation consists of two components -- An lxml-based parser module (svd.py) and a GDB file (svd_gdb).
+The implementation consists of two components -- A parser module (svd.py) and a GDB file (svd_gdb).
 I haven't yet worked out a perfect workflow for this, though it's quite easy to use when
 you already tend to have a GDB initialization file for starting up OpenOCD and the like.
 However your workflow works, just make sure to, in GDB:
