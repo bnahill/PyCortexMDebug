@@ -143,6 +143,8 @@ class SVD(gdb.Command):
     def _print_register_fields(self, container_name, form, register):
         gdb.write("Fields in {}:\n".format(container_name))
         fields = register.fields
+        if len(fields) == 0:
+            return
         if not register.readable():
             data = 0
         else:
