@@ -20,7 +20,7 @@ import re
 import math
 import sys
 import struct
-import pkg_resources
+import importlib_resources
 
 sys.path.append('.')
 from cmdebug.svd import SVDFile
@@ -40,10 +40,10 @@ class LoadSVD(gdb.Command):
     def __init__(self):
         self.vendors = {}
         try:
-            vendor_names = pkg_resources.resource_listdir("cmsis_svd", "data")
-            for vendor in vendor_names:
-                fnames = pkg_resources.resource_listdir("cmsis_svd", "data/{}".format(vendor))
-                self.vendors[vendor] = [fname for fname in fnames if fname.lower().endswith(".svd")]
+            for vendor_path in importlib_resources.files("cmsis_svd.data").iterdir():
+                vendor =vendor_path.name
+                files = importlib_resources.files(f"cmsis_svd.data.{vendor}").iterdir()
+                self.vendors[vendor] = [file.name for file in files if file.name.lower().endswith(".svd")]
         except:
             pass
 
@@ -80,7 +80,7 @@ class LoadSVD(gdb.Command):
             f = args[0]
         elif argc == 2:
             gdb.write("Loading SVD file {}/{}...\n".format(args[0], args[1]))
-            f = pkg_resources.resource_filename("cmsis_svd", "data/{}/{}".format(args[0], args[1]))
+            f = str(importlib_resources.files("cmsis_svd.data") / f"{args[0]}" / f"{args[1]}")
         else:
             raise gdb.GdbError("Usage: svd_load <vendor> <device.svd> or svd_load <path/to/filename.svd>\n")
         try:

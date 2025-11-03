@@ -27,7 +27,7 @@ setup(
 	keywords='arm gdb cortex cortex-m svd trace microcontroller',
 	license='GPL',
 	install_requires=[
-	  'setuptools',
+	  'importlib-resources',
 	  'lxml',
 	],
 )
