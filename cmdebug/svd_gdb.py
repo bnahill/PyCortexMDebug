@@ -62,11 +62,11 @@ class LoadSVD(gdb.Command):
 
         # "svd_load <tab>" or "svd_load ST<tab>"
         if num_args == 1:
-            prefix = word.lower()
+            prefix = "" if word is None else word.lower()
             return [vendor for vendor in self.vendors if vendor.lower().startswith(prefix)]
         # "svd_load STMicro<tab>" or "svd_load STMicro STM32F1<tab>"
         elif num_args == 2 and args[0] in self.vendors:
-            prefix = word.lower()
+            prefix = "" if word is None else word.lower()
             filenames = self.vendors[args[0]]
             return [fname for fname in filenames if fname.lower().startswith(prefix)]
         return gdb.COMPLETE_NONE
