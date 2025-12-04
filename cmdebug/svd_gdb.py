@@ -20,10 +20,13 @@ import re
 import math
 import sys
 import struct
-import pkg_resources
+
+
+from typing import Optional, Dict, List
 
 sys.path.append('.')
 from cmdebug.svd import SVDFile
+from cmdebug import svd_fetcher
 
 BITS_TO_UNPACK_FORMAT = {
     8: "B",
@@ -31,26 +34,13 @@ BITS_TO_UNPACK_FORMAT = {
     32: "I",
 }
 
-
-class LoadSVD(gdb.Command):
+class LoadSVDFile(gdb.Command):
     """ A command to load an SVD file and to create the command for inspecting
     that object
     """
 
-    def __init__(self):
-        self.vendors = {}
-        try:
-            vendor_names = pkg_resources.resource_listdir("cmsis_svd", "data")
-            for vendor in vendor_names:
-                fnames = pkg_resources.resource_listdir("cmsis_svd", "data/{}".format(vendor))
-                self.vendors[vendor] = [fname for fname in fnames if fname.lower().endswith(".svd")]
-        except:
-            pass
-
-        if len(self.vendors) > 0:
-            gdb.Command.__init__(self, "svd_load", gdb.COMMAND_USER)
-        else:
-            gdb.Command.__init__(self, "svd_load", gdb.COMMAND_DATA, gdb.COMPLETE_FILENAME)
+    def __init__(self) -> None:
+       gdb.Command.__init__(self, "svd_load_file", gdb.COMMAND_DATA, gdb.COMPLETE_FILENAME)
 
     def complete(self, text, word):
         args = gdb.string_to_argv(text)
@@ -78,11 +68,88 @@ class LoadSVD(gdb.Command):
         if argc == 1:
             gdb.write("Loading SVD file {}...\n".format(args[0]))
             f = args[0]
-        elif argc == 2:
-            gdb.write("Loading SVD file {}/{}...\n".format(args[0], args[1]))
-            f = pkg_resources.resource_filename("cmsis_svd", "data/{}/{}".format(args[0], args[1]))
         else:
-            raise gdb.GdbError("Usage: svd_load <vendor> <device.svd> or svd_load <path/to/filename.svd>\n")
+            raise gdb.GdbError("Usage: svd_load_file <path/to/filename.svd>\n")
+        try:
+            SVD(SVDFile(f))
+        except Exception as e:
+            raise gdb.GdbError("Could not load SVD file {} : {}...\n".format(f, e))
+
+
+class LoadSVDRemote(gdb.Command):
+    """ A command to load an SVD file and to create the command for inspecting
+    that object
+    """
+
+    def __init__(self) -> None:
+        self.fetcher = svd_fetcher.SVDFetcher()
+        self.vendors: Optional[Dict[str, List[svd_fetcher.RemoteSVDFile]]] = None
+
+        gdb.Command.__init__(self, "svd_load_remote", gdb.COMMAND_USER)
+
+    def try_to_get_vendors(self) -> bool:
+        if self.vendors == None:
+            try:
+                # Get the vendors and cache them
+                self.vendors = self.fetcher.get_all_chips()
+                self.fetcher.save(self.vendors)
+            except:
+                # PLan B, restore from cache
+                self.vendors = self.fetcher.restore()
+
+        return self.vendors is not None
+
+    def complete(self, text, word):
+        if not self.try_to_get_vendors():
+            raise gdb.GdbError("Could not fetch list of devices")
+
+        args = gdb.string_to_argv(text)
+        num_args = len(args)
+        if text.endswith(" "):
+            num_args += 1
+            # Just put an empty argument there to use in completion
+            args += [""]
+        if not text:
+            num_args = 1
+            args = [""]
+
+        # "svd_load <tab>" or "svd_load_remote ST<tab>"
+        if num_args == 1:
+            prefix = args[0].lower()
+            return [vendor for vendor in self.vendors.keys() if vendor.lower().startswith(prefix)]
+        # "svd_load_remote STMicro<tab>" or "svd_load STMicro STM32F1<tab>"
+        elif num_args == 2 and args[0] in self.vendors:
+            prefix = args[1].lower()
+            chips = self.vendors[args[0]]
+            return [chip.name for chip in chips if chip.name.lower().startswith(prefix)]
+        return gdb.COMPLETE_NONE
+
+    def invoke(self, args, from_tty):
+        if not self.try_to_get_vendors():
+            raise gdb.GdbError("Could not fetch list of devices")
+
+        args = gdb.string_to_argv(args)
+        argc = len(args)
+        if argc == 2:
+            (arg_vendor, arg_chip) = args
+            gdb.write("Loading SVD file {}->{}...\n".format(arg_vendor, arg_chip))
+
+            if arg_vendor not in self.vendors.keys():
+                raise gdb.GdbError("Vendor {} not found".format(arg_vendor))
+
+            # Vendor is legit now
+            chips = [x for x in self.vendors[arg_vendor] if x.name == arg_chip]
+            if len(chips) == 0:
+                raise gdb.GdbError("No chip matches {}->{}".format(arg_vendor, arg_chip))
+
+            chip = chips[0]
+
+            try:
+                f = str(self.fetcher.download_svd(chip))
+            except Exception as e:
+                raise gdb.GdbError("Error fetching chip {}->{}: {}".format(arg_vendor, arg_chip, e))
+        else:
+            raise gdb.GdbError("Usage: svd_load_remote <vendor> <device>\n")
         try:
             SVD(SVDFile(f))
         except Exception as e:
@@ -92,9 +159,9 @@ class LoadSVD(gdb.Command):
 if __name__ == "__main__":
     # This will also get executed by GDB
 
-    # Create just the svd_load command
-    LoadSVD()
-
+    # Create just the two commands
+    LoadSVDFile()
+    LoadSVDRemote()
 
 class SVD(gdb.Command):
     """ The CMSIS SVD (System View Description) inspector command
