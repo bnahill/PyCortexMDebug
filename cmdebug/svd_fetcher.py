@@ -25,12 +25,19 @@ from pathlib import Path
 import json
 import os
 import dataclasses
+import time
+
+
+def _str_or_env(default: str, env_var: str) -> str:
+    env = os.getenv(env_var)
+    return default if env is None else env
+
 
 _REPO_OWNER = "cmsis-svd"
 _REPO_NAME = "cmsis-svd-data"
-_BRANCH = "main"
-_BASE_API_URL = f"https://api.github.com/repos/{_REPO_OWNER}/{_REPO_NAME}"
-_DEFAULT_CACHE_PATH = Path.home() / ".cache" / "cmsis-svd"
+_BRANCH = _str_or_env("main", "SVD_BRANCH")
+_BASE_API_URL = _str_or_env(f"https://api.github.com/repos/{_REPO_OWNER}/{_REPO_NAME}", "SVD_API_URL")
+_DEFAULT_CACHE_PATH = Path(_str_or_env(str(Path.home() / ".cache" / "cmsis-svd"), "SVD_CACHE_PATH"))
 
 _VERBOSE = True
 
@@ -68,6 +75,7 @@ class SVDFetcher:
             cache_dir = _DEFAULT_CACHE_PATH
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_file = self.cache_dir / "devices.json"
 
         self.session = requests.Session()
         # Add GitHub token if available via environment variable
@@ -76,20 +84,30 @@ class SVDFetcher:
             self.session.headers["Authorization"] = f"token {token}"
 
     def save(self, vendors: Dict[str, List[RemoteSVDFile]]):
-        cache_file = self.cache_dir / "devices.json"
-
         all_tuples = [(vendor, [c.as_dict() for c in chips]) for vendor, chips in vendors.items()]
         serializable_dict: Dict[str, List[Dict[str, str]]] = {}
         for (vendor, chips) in all_tuples:
             serializable_dict[vendor] = chips
 
-        open(str(cache_file), "w").write(json.dumps(serializable_dict))
+        open(str(self.cache_file), "w").write(json.dumps(serializable_dict))
+
+    def cache_age_seconds(self) -> Optional[int]:
+        """Get approximate time since cache file was modified
+
+        Returns:
+            Optional[int]: seconds since modification or None if nonexistent
+        """
+        if not self.cache_file.exists():
+            return None
+        mtime = os.path.getmtime(str(self.cache_file.absolute()))
+
+        return int(time.time() - mtime)
+
 
     def restore(self) -> Optional[Dict[str, List[RemoteSVDFile]]]:
-        cache_file = self.cache_dir / "devices.json"
-
-        if cache_file.exists():
-            raw: Dict[str, List[Dict[str, str]]] = json.loads(open(str(cache_file)).read())
+        if self.cache_file.exists():
+            _log(f"Restoring cached index from {self.cache_file}")
+            raw: Dict[str, List[Dict[str, str]]] = json.loads(open(str(self.cache_file)).read())
             good_dict: Dict[str, List[RemoteSVDFile]] = dict()
             # Raw _should_ be dict of vendors with a list of chips under each
             for (vendor, chips_dicts) in raw.items():

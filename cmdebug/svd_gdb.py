@@ -20,13 +20,13 @@ import re
 import math
 import sys
 import struct
-
+import os
 
 from typing import Optional, Dict, List
 
-sys.path.append('.')
+sys.path.append(os.path.realpath(os.path.dirname(__file__) + "/.."))
 from cmdebug.svd import SVDFile
-from cmdebug import svd_fetcher
+from cmdebug.svd_fetcher import SVDFetcher, RemoteSVDFile
 
 BITS_TO_UNPACK_FORMAT = {
     8: "B",
@@ -82,12 +82,19 @@ class LoadSVDRemote(gdb.Command):
     """
 
     def __init__(self) -> None:
-        self.fetcher = svd_fetcher.SVDFetcher()
-        self.vendors: Optional[Dict[str, List[svd_fetcher.RemoteSVDFile]]] = None
+        self.fetcher = SVDFetcher()
+        self.vendors: Optional[Dict[str, List[RemoteSVDFile]]] = None
 
         gdb.Command.__init__(self, "svd_load_remote", gdb.COMMAND_USER)
 
     def try_to_get_vendors(self) -> bool:
+        MAX_DAYS = 1
+        if self.vendors == None:
+            # First, check if we have a fresh-enough cache file
+            cache_age = self.fetcher.cache_age_seconds()
+            if cache_age is not None and cache_age < (MAX_DAYS * 24 * 60 * 60):
+                self.vendors = self.fetcher.restore()
+
         if self.vendors == None:
             try:
                 # Get the vendors and cache them
