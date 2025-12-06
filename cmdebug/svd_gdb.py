@@ -21,6 +21,7 @@ import math
 import sys
 import struct
 import pkg_resources
+from cmsis_svd.model import SVDAccessType
 
 from typing import Tuple, List, Optional, Union
 
@@ -37,33 +38,42 @@ BITS_TO_UNPACK_FORMAT = {
 
 def _reg_address(reg: Union[svd_model.SVDRegister, svd_model.SVDRegisterArray]) -> int:
     assert reg.parent is not None, f"Cannot get address for parentless register {reg.name}"
-    return reg.parent._base_address + reg.address_offset
+    return reg.parent.base_address + reg.address_offset
 
-def _field_accessible(field: svd_model.SVDField, mode: str) -> bool:
+def _field_accessible(field: svd_model.SVDField, mode: SVDAccessType) -> bool:
     if field.access is not None:
-        return mode in field.access
-    elif field.parent._access is not None:
-        return mode in field.parent._access
+        return mode == field.access
+    elif field.parent.access is not None:
+        return mode == field.parent.access
     return False
 
 def _field_readable(field: svd_model.SVDField) -> bool:
-    return _field_accessible(field, "read")
+    return _field_accessible(field, SVDAccessType.READ_ONLY) or \
+        _field_accessible(field, SVDAccessType.READ_WRITE) or \
+        _field_accessible(field, SVDAccessType.READ_WRITE_ONCE)
 
 def _field_writeable(field: svd_model.SVDField) -> bool:
-    return _field_accessible(field, "write")
+    return _field_accessible(field, SVDAccessType.READ_WRITE) or \
+        _field_accessible(field, SVDAccessType.WRITE_ONCE) or \
+        _field_accessible(field, SVDAccessType.WRITE_ONLY)
 
-def _reg_accessible(reg: Union[svd_model.SVDRegister, svd_model.SVDRegisterArray], mode: str) -> bool:
-    if reg._access is not None:
-        return mode in reg._access
-    elif reg.parent._access is not None:
-        return mode in reg.parent._access
+def _reg_accessible(reg: Union[svd_model.SVDRegister, svd_model.SVDRegisterArray], mode: SVDAccessType) -> bool:
+    if reg.access is not None:
+        return reg.access == mode
+    elif reg.parent.access is not None:
+        return reg.parent.access == mode
     return False
 
 def _reg_readable(reg: Union[svd_model.SVDRegister, svd_model.SVDRegisterArray]) -> bool:
-    return _reg_accessible(reg, "read")
+    return _reg_accessible(reg, SVDAccessType.READ_ONLY) or \
+    _reg_accessible(reg, SVDAccessType.READ_WRITE) or \
+    _reg_accessible(reg, SVDAccessType.READ_WRITE_ONCE)
 
 def _reg_writeable(reg: Union[svd_model.SVDRegister, svd_model.SVDRegisterArray]) -> bool:
-    return _reg_accessible(reg, "write")
+    return _reg_accessible(reg, SVDAccessType.WRITE_ONCE) or \
+    _reg_accessible(reg, SVDAccessType.WRITE_ONLY) or \
+    _reg_accessible(reg, SVDAccessType.READ_WRITE) or \
+    _reg_accessible(reg, SVDAccessType.READ_WRITE_ONCE)
 
 def _get_regs_by_addresss(peripheral: svd_model.SVDPeripheral) -> List[Tuple[str, svd_model.SVDRegister, int]]:
     reg_list: List[Tuple[str, svd_model.SVDRegister, int]] = []
@@ -152,15 +162,14 @@ class SVD(gdb.Command):
 
     def _print_registers(self, container_name, form: str, peripheral: svd_model.SVDPeripheral):
         gdb.write(f"Registers in {container_name}:\n")
-
         reg_list = _get_regs_by_addresss(peripheral)
         reg_list_str: List[Tuple[str, str, str]] = []
 
         for name, r, addr in reg_list:
             if _reg_readable(r):
                 try:
-                    data = self.read(addr, r._size)
-                    data_str = self.format(data, form, r._size)
+                    data = self.read(addr, r.size)
+                    data_str = self.format(data, form, r.size)
                     if form == 'a':
                         data_str += " <" + re.sub(r'\s+', ' ',
                                                 gdb.execute("info symbol {}".format(data), True,
@@ -169,8 +178,9 @@ class SVD(gdb.Command):
                     data_str = "(error reading)"
             else:
                 data_str = "(not readable)"
-
-            desc = re.sub(r'\s+', ' ', r.description)
+            desc = ""
+            if r.description is not None:
+                desc = re.sub(r'\s+', ' ', r.description)
             reg_list_str.append((name, data_str, desc))
 
         column1_width = max(len(reg[0]) for reg in reg_list_str) + 2  # padding
@@ -183,13 +193,14 @@ class SVD(gdb.Command):
 
     def _print_register_fields(self, container_name: str, form: str, register: svd_model.SVDRegister):
         gdb.write(f"Fields in {container_name}:\n")
-        fields = register._fields
-        if "read" not in register._access:
+        fields = register.fields
+        if not _reg_readable(register):
+            gdb.write("{} is not readable\n".format(register.name))
             data = 0
         else:
-            data = self.read(_reg_address(register), register._size)
+            data = self.read(_reg_address(register), register.size)
         field_list: List[Tuple[str, str, str]] = []
-        for f in register._fields:
+        for f in register.fields:
             
             desc = re.sub(r'\s+', ' ', f.description)
             if _field_readable(f):
@@ -253,8 +264,11 @@ class SVD(gdb.Command):
             peripherals = self.svd_device.peripherals
             column_width = max(len(p.name) for p in peripherals) + 2  # padding
             for p in peripherals:
-                desc = re.sub(r'\s+', ' ', p._description)
-                gdb.write("\t{}:{}{}\n".format(p.name, "".ljust(column_width - len(p.name)), desc))
+                if p.description is not None:
+                    desc = re.sub(r'\s+', ' ', p.description)
+                    gdb.write("\t{}:{}{}\n".format(p.name, "".ljust(column_width - len(p.name)), desc))
+                else:
+                    gdb.write("\t{}\n".format(p.name))
             return
 
         if len(s) >= 1:
