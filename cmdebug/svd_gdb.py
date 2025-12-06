@@ -178,8 +178,9 @@ class SVD(gdb.Command):
                     data_str = "(error reading)"
             else:
                 data_str = "(not readable)"
-
-            desc = re.sub(r'\s+', ' ', r.description)
+            desc = ""
+            if r.description is not None:
+                desc = re.sub(r'\s+', ' ', r.description)
             reg_list_str.append((name, data_str, desc))
 
         column1_width = max(len(reg[0]) for reg in reg_list_str) + 2  # padding
